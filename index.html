@@ -518,31 +518,36 @@
   switchBtnBottom.addEventListener('click', flipCamera);
 
   function applyFilmLook(ctx, w, h) {
-    // Muted 90s print/halftone pass — faded, slightly desaturated, cool-leaning
-    // rather than a heavy yellow cast, plus a halftone dot texture instead of
-    // plain grain (closer to old newsprint/photocopy reproductions).
+    // Moody cinematic 90s pass: darker overall exposure, warm amber pockets
+    // in the highlights only (not a flat cast over everything), crushed
+    // shadows, filmic grain, and scattered dust/light-speck particles
+    // drifting across the frame rather than a flat halftone grid.
     const imgData = ctx.getImageData(0, 0, w, h);
     const d = imgData.data;
     for (let i = 0; i < d.length; i += 4) {
       let r = d[i], g = d[i + 1], b = d[i + 2];
+      const lum = (r + g + b) / 3;
 
-      // desaturate toward gray a bit, so it reads as "faded" not "colorful"
-      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-      const desat = 0.28;
-      r = r + (lum - r) * desat;
-      g = g + (lum - g) * desat;
-      b = b + (lum - b) * desat;
+      // darken overall, crush shadows toward black rather than lifting them
+      r *= 0.80; g *= 0.80; b *= 0.82;
 
-      // gentle contrast fade with a lifted floor (faded print blacks)
-      const fade = 0.86, floor = 22;
-      r = r * fade + floor;
-      g = g * fade + floor;
-      b = b * fade + floor;
+      // gentle S-curve: deepen shadows, keep mids fairly true
+      const t = lum / 255;
+      const curve = t * t * (3 - 2 * t); // smoothstep
+      const shadowPull = (1 - curve) * 0.12;
+      r -= shadowPull * 60; g -= shadowPull * 60; b -= shadowPull * 55;
 
-      // very light warm bias only — nowhere near as strong as before
-      r *= 1.035;
-      g *= 1.01;
-      b *= 0.95;
+      // warm bias that only shows up in brighter areas (highlight pockets),
+      // near-zero effect on darks — mimics warm light sources in a dim room
+      const hiWeight = Math.max(0, (lum - 110) / 145);
+      r += hiWeight * 26;
+      g += hiWeight * 12;
+      b -= hiWeight * 14;
+
+      // slight teal/cool bias in the shadows for contrast against the warm highlights
+      const loWeight = Math.max(0, (90 - lum) / 90);
+      b += loWeight * 10;
+      r -= loWeight * 4;
 
       d[i] = r > 255 ? 255 : r < 0 ? 0 : r;
       d[i + 1] = g > 255 ? 255 : g < 0 ? 0 : g;
@@ -550,45 +555,61 @@
     }
     ctx.putImageData(imgData, 0, 0);
 
-    // halftone dot grid: faint dark dots layered over the image, spacing
-    // driven by local brightness so shadows get denser dots like a print scan
-    ctx.save();
-    const cell = Math.max(3, Math.round(w / 180));
-    for (let y = 0; y < h; y += cell) {
-      for (let x = 0; x < w; x += cell) {
-        const idx = (Math.floor(y) * w + Math.floor(x)) * 4;
-        const lum = (d[idx] + d[idx + 1] + d[idx + 2]) / 3;
-        const density = 1 - lum / 255; // darker area -> bigger dot
-        if (density > 0.04) {
-          ctx.fillStyle = 'rgba(20,18,15,' + Math.min(0.16, density * 0.22) + ')';
-          const r = (cell * 0.5) * density;
-          ctx.beginPath();
-          ctx.arc(x + cell / 2, y + cell / 2, r, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-    }
-    ctx.restore();
+    // vignette, a bit heavier since the reference is darker at the edges
+    const vg = ctx.createRadialGradient(w / 2, h / 2, h * 0.24, w / 2, h / 2, h * 0.78);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(0,0,0,0.5)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, w, h);
 
-    // subtle grain on top of the halftone
-    const grainCount = Math.round((w * h) / 1600);
+    // filmic grain: finer and more uniform than before
     ctx.save();
+    const grainCount = Math.round((w * h) / 700);
     for (let i = 0; i < grainCount; i++) {
       const x = Math.random() * w;
       const y = Math.random() * h;
       const shade = Math.random() < 0.5 ? 0 : 255;
-      ctx.globalAlpha = Math.random() * 0.08;
+      ctx.globalAlpha = Math.random() * 0.09;
       ctx.fillStyle = shade === 0 ? '#000' : '#fff';
-      ctx.fillRect(x, y, 1.3, 1.3);
+      ctx.fillRect(x, y, 1.2, 1.2);
     }
     ctx.restore();
 
-    // soft vignette
-    const vg = ctx.createRadialGradient(w / 2, h / 2, h * 0.32, w / 2, h / 2, h * 0.82);
-    vg.addColorStop(0, 'rgba(0,0,0,0)');
-    vg.addColorStop(1, 'rgba(0,0,0,0.32)');
-    ctx.fillStyle = vg;
-    ctx.fillRect(0, 0, w, h);
+    // dust / light-speck particles scattered across the frame — small bright
+    // dots with soft glow, occasional slightly larger "close" specks, plus a
+    // few faint streaks, like light hitting dust in the air
+    ctx.save();
+    const speckCount = Math.round((w * h) / 9000);
+    for (let i = 0; i < speckCount; i++) {
+      const x = Math.random() * w;
+      const y = Math.random() * h;
+      const big = Math.random() < 0.12;
+      const r = big ? 1.6 + Math.random() * 2.2 : 0.5 + Math.random() * 0.9;
+      const alpha = big ? 0.25 + Math.random() * 0.25 : 0.35 + Math.random() * 0.4;
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, r * 3.2);
+      glow.addColorStop(0, `rgba(255,250,235,${alpha})`);
+      glow.addColorStop(1, 'rgba(255,250,235,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(x, y, r * 3.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = `rgba(255,255,250,${Math.min(1, alpha + 0.25)})`;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // a few faint diagonal streak-scratches, very subtle
+    const streakCount = Math.round(w / 260);
+    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < streakCount; i++) {
+      const x = Math.random() * w;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x + (Math.random() - 0.5) * 30, h);
+      ctx.stroke();
+    }
+    ctx.restore();
 
     // burned-in LCD date stamp
     const now = new Date();
@@ -599,26 +620,24 @@
     ctx.textAlign = 'right';
     const px = w - fontSize * 0.9;
     const py = h - fontSize * 0.7;
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
     ctx.fillText(stamp, px + 1.5, py + 1.5);
     ctx.fillStyle = '#FF9640';
     ctx.fillText(stamp, px, py);
   }
 
   function applyDoodleLook(ctx, w, h) {
-    // Colorful painted-art conversion: bilateral-ish smoothing to flatten
-    // texture into soft color regions, color quantization into paint-like
-    // bands, saturation boost, then dark ink edge lines laid on top from a
-    // Sobel pass — the combination reads as a painted illustration rather
-    // than a black-and-white sketch.
+    // Mid-strength painterly conversion — noticeably illustrated with
+    // visible ink edges and some color simplification, but not as flat/
+    // posterized as a full paint conversion. Roughly halfway between a
+    // light touch-up and a full stylized repaint.
     const src = ctx.getImageData(0, 0, w, h);
     const sd = src.data;
     const n = w * h;
 
-    // 1) Edge-preserving smoothing (small-radius box blur, a cheap stand-in
-    // for bilateral filtering) to flatten fine texture into paint-like areas
+    // 1) Moderate smoothing to flatten texture into soft color regions
     const smoothed = new Uint8ClampedArray(sd.length);
-    const radius = Math.max(1, Math.round(w / 340));
+    const radius = Math.max(1, Math.round(w / 480));
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         let rs = 0, gs = 0, bs = 0, count = 0;
@@ -637,30 +656,31 @@
         smoothed[o] = rs / count;
         smoothed[o + 1] = gs / count;
         smoothed[o + 2] = bs / count;
-        smoothed[o + 3] = 255;
       }
     }
 
-    // 2) Posterize + saturate: quantize each channel into bands and push
-    // saturation up so colors feel like mixed paint rather than a photo
-    const levels = 6;
-    const step = 255 / (levels - 1);
+    // 2) Blend smoothing in more strongly, mild posterize (more levels than
+    // the full version so it simplifies color without flat banding), and a
+    // moderate saturation lift
     const out = ctx.createImageData(w, h);
     const od = out.data;
-    for (let i = 0; i < smoothed.length; i += 4) {
-      let r = smoothed[i], g = smoothed[i + 1], b = smoothed[i + 2];
+    const blend = 0.6;
+    const levels = 10;
+    const step = 255 / (levels - 1);
+    for (let i = 0; i < sd.length; i += 4) {
+      let r = sd[i] * (1 - blend) + smoothed[i] * blend;
+      let g = sd[i + 1] * (1 - blend) + smoothed[i + 1] * blend;
+      let b = sd[i + 2] * (1 - blend) + smoothed[i + 2] * blend;
 
-      // saturation boost around the pixel's own luminance
       const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-      const sat = 1.45;
+      const sat = 1.22;
       r = lum + (r - lum) * sat;
       g = lum + (g - lum) * sat;
       b = lum + (b - lum) * sat;
 
-      // posterize
-      r = Math.round(Math.round(r / step) * step);
-      g = Math.round(Math.round(g / step) * step);
-      b = Math.round(Math.round(b / step) * step);
+      r = Math.round(r / step) * step;
+      g = Math.round(g / step) * step;
+      b = Math.round(b / step) * step;
 
       od[i] = r > 255 ? 255 : r < 0 ? 0 : r;
       od[i + 1] = g > 255 ? 255 : g < 0 ? 0 : g;
@@ -668,16 +688,15 @@
       od[i + 3] = 255;
     }
 
-    // 3) Ink edges from a Sobel pass on the (unsmoothed) grayscale original,
-    // drawn as dark lines over the painted color base — this is what makes
-    // it read as "art" rather than a blurred photo
+    // 3) Visible ink lines on clear edges — lower threshold and higher
+    // opacity than the light version, but not as thick/dark as full strength
     const gray = new Float32Array(n);
     for (let i = 0, p = 0; i < sd.length; i += 4, p++) {
       gray[p] = 0.299 * sd[i] + 0.587 * sd[i + 1] + 0.114 * sd[i + 2];
     }
     const gxK = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
     const gyK = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
-    const edgeThresh = 60;
+    const edgeThresh = 75;
     for (let y = 1; y < h - 1; y++) {
       for (let x = 1; x < w - 1; x++) {
         const idx = y * w + x;
@@ -692,27 +711,15 @@
         const mag = Math.sqrt(gx * gx + gy * gy);
         if (mag > edgeThresh) {
           const o = idx * 4;
-          const strength = Math.min(1, (mag - edgeThresh) / 180);
-          od[o] = od[o] * (1 - strength) + 28 * strength;
-          od[o + 1] = od[o + 1] * (1 - strength) + 24 * strength;
-          od[o + 2] = od[o + 2] * (1 - strength) + 22 * strength;
+          const strength = Math.min(0.65, (mag - edgeThresh) / 260);
+          od[o] = od[o] * (1 - strength) + 30 * strength;
+          od[o + 1] = od[o + 1] * (1 - strength) + 26 * strength;
+          od[o + 2] = od[o + 2] * (1 - strength) + 24 * strength;
         }
       }
     }
 
     ctx.putImageData(out, 0, 0);
-
-    // 4) Faint canvas-grain texture so it doesn't look flat-vector
-    ctx.save();
-    const grainCount = Math.round((w * h) / 3200);
-    for (let i = 0; i < grainCount; i++) {
-      const x = Math.random() * w;
-      const y = Math.random() * h;
-      ctx.globalAlpha = Math.random() * 0.05;
-      ctx.fillStyle = Math.random() < 0.5 ? '#000' : '#fff';
-      ctx.fillRect(x, y, 1.5, 1.5);
-    }
-    ctx.restore();
   }
 
   shutterBtn.addEventListener('click', () => {
@@ -727,20 +734,33 @@
       ctx.scale(-1, 1);
     }
     ctx.drawImage(video, 0, 0, w, h);
-    if (activeFilter === 'film') applyFilmLook(ctx, w, h);
-    else if (activeFilter === 'doodle') applyDoodleLook(ctx, w, h);
 
     flashWhite.classList.remove('go'); void flashWhite.offsetWidth; flashWhite.classList.add('go');
     burst.classList.remove('go'); void burst.offsetWidth; burst.classList.add('go');
 
-    canvas.toBlob((blob) => {
-      capturedBlob = blob;
-      previewImg.src = URL.createObjectURL(blob);
-      previewImg.style.display = 'block';
-      video.style.display = 'none';
-      captureControls.style.display = 'none';
-      reviewBar.classList.add('active');
-    }, 'image/jpeg', 0.92);
+    const finish = () => {
+      canvas.toBlob((blob) => {
+        capturedBlob = blob;
+        previewImg.src = URL.createObjectURL(blob);
+        previewImg.style.display = 'block';
+        video.style.display = 'none';
+        captureControls.style.display = 'none';
+        reviewBar.classList.add('active');
+        shutterBtn.disabled = false;
+      }, 'image/jpeg', 0.92);
+    };
+
+    if (activeFilter === 'doodle') {
+      shutterBtn.disabled = true;
+      showToast('Painting your photo…');
+      // let the flash/burst animation paint before the heavy pixel loop runs
+      setTimeout(() => { applyDoodleLook(ctx, w, h); finish(); }, 30);
+    } else if (activeFilter === 'film') {
+      applyFilmLook(ctx, w, h);
+      finish();
+    } else {
+      finish();
+    }
   });
 
   retakeBtn.addEventListener('click', () => {
