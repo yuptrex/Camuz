@@ -34,6 +34,39 @@
     gap: 12px;
   }
 
+  /* ── Tablet / desktop only: contain the (unchanged) phone layout in a
+       centered, phone-proportioned card instead of stretching full-bleed.
+       Nothing below this affects viewports under 640px (phones). ── */
+  @media (min-width: 640px){
+    html, body{
+      background: var(--paper-dim);
+    }
+    body{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      min-height:100%;
+    }
+    .app{
+      height: min(100dvh, 900px);
+      width: min(100vw, 460px);
+      aspect-ratio: 9 / 19.5;
+      max-height: 96vh;
+      border-radius: 28px;
+      box-shadow: 0 18px 40px rgba(34,31,27,.25), 0 0 0 2px var(--ink);
+      overflow: hidden;
+    }
+  }
+
+  /* Short/landscape tablet or desktop windows: size by height instead so
+     the card never gets clipped top/bottom. */
+  @media (min-width: 640px) and (max-height: 700px){
+    .app{
+      aspect-ratio: auto;
+      width: min(56vh, 460px);
+    }
+  }
+
   /* ── Header, hand-lettered ── */
   header{
     display:flex;
