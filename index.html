@@ -1987,7 +1987,7 @@ s4u4Q54ZU8z+/e4r+WxOXVfDpQLSXvFpYkjBI+T9ehBXyzWjjwy3OLWNp/vyBo7M
         try {
           const driveData = await uploadToDrive(attachedItem.blob, attachedItem.name || `snap-${Date.now()}.jpg`);
           driveLink = driveData.webViewLink || driveData.id;
-        } catch (err) { driveError = err; }
+        } catch (err) { driveError = err; console.error("Drive upload error:", err); }
       }
       if (sent && useSendPhoto) {
         saveSnapRecord({ id: 'snap-' + Date.now(), blob: attachedItem.blob, ts: Date.now(), fileId: savedFileId, driveLink });
@@ -2007,7 +2007,7 @@ s4u4Q54ZU8z+/e4r+WxOXVfDpQLSXvFpYkjBI+T9ehBXyzWjjwy3OLWNp/vyBo7M
       try {
         const driveData = await uploadToDrive(capturedBlob, `snap-${Date.now()}.jpg`);
         driveLink = driveData.webViewLink || driveData.id;
-      } catch (err) { driveError = err; }
+      } catch (err) { driveError = err; console.error("Drive upload error:", err); }
       if (sent) {
         saveSnapRecord({ id: 'snap-' + Date.now(), blob: capturedBlob, ts: Date.now(), fileId: savedFileId, driveLink });
       }
@@ -2016,7 +2016,7 @@ s4u4Q54ZU8z+/e4r+WxOXVfDpQLSXvFpYkjBI+T9ehBXyzWjjwy3OLWNp/vyBo7M
     hideUploadOverlay();
 
     if (sent) {
-      const driveNote = driveLink ? ' + Drive ✓' : (driveError ? ' (Drive failed)' : '');
+      const driveNote = driveLink ? ' + Drive ✓' : (driveError ? ` (Drive failed: ${driveError.message})` : '');
       showToast('Sent! Check Telegram ✓' + driveNote, 'ok');
       resetToCamera();
     } else {
@@ -2035,4 +2035,4 @@ s4u4Q54ZU8z+/e4r+WxOXVfDpQLSXvFpYkjBI+T9ehBXyzWjjwy3OLWNp/vyBo7M
 })();
 </script>
 </body>
-</html>
+  </html>
