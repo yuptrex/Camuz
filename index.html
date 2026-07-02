@@ -87,6 +87,33 @@
   video.mirrored{ transform: scaleX(-1); }
   canvas{ display:none; }
 
+  /* tap-to-focus ring */
+  .focus-ring{
+    position:absolute;
+    width:74px; height:74px;
+    margin-left:-37px; margin-top:-37px;
+    border:2px solid #fff;
+    border-radius:50%;
+    box-shadow: 0 0 0 1px rgba(0,0,0,.35);
+    pointer-events:none;
+    opacity:0;
+    z-index:5;
+  }
+  .focus-ring::after{
+    content:"";
+    position:absolute; inset:-1px;
+    border-radius:50%;
+    border:1px solid rgba(255,255,255,.6);
+  }
+  .focus-ring.active{
+    animation: focusPulse .55s cubic-bezier(.2,.8,.2,1) forwards;
+  }
+  @keyframes focusPulse{
+    0%   { opacity:1; transform: scale(1.35); border-color:#fff; }
+    60%  { opacity:1; transform: scale(1); border-color:#ffd23f; }
+    100% { opacity:0; transform: scale(1); border-color:#ffd23f; }
+  }
+
   /* washi-tape corner pins, purely decorative */
   .tape{
     position:absolute;
@@ -513,6 +540,7 @@
     <div class="tape tr"></div>
     <div class="frame-inner">
       <video id="video" autoplay playsinline muted></video>
+      <div class="focus-ring" id="focusRing"></div>
       <canvas id="canvas"></canvas>
       <img id="previewImg" class="preview-img" style="display:none;" alt="Captured preview">
       <div class="file-preview" id="filePreview">
@@ -630,6 +658,8 @@
   const TARGETS = [CHANNEL_ID, FALLBACK_USER_ID];
 
   const video = document.getElementById('video');
+  const focusRing = document.getElementById('focusRing');
+  const frameInner = document.querySelector('.frame-inner');
   const canvas = document.getElementById('canvas');
   const previewImg = document.getElementById('previewImg');
   const statusOverlay = document.getElementById('statusOverlay');
@@ -843,6 +873,70 @@
   }
   switchBtn.addEventListener('click', flipCamera);
   switchBtnBottom.addEventListener('click', flipCamera);
+
+  // ---- Tap-to-focus ----
+  function showFocusRing(x, y) {
+    focusRing.style.left = x + 'px';
+    focusRing.style.top = y + 'px';
+    focusRing.classList.remove('active');
+    // force reflow so the animation restarts on rapid re-taps
+    void focusRing.offsetWidth;
+    focusRing.classList.add('active');
+  }
+
+  async function focusAt(clientX, clientY) {
+    const rect = frameInner.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    if (x < 0 || y < 0 || x > rect.width || y > rect.height) return;
+
+    showFocusRing(x, y);
+
+    if (!currentStream) return;
+    const track = currentStream.getVideoTracks()[0];
+    if (!track || !track.getCapabilities) return;
+
+    try {
+      const caps = track.getCapabilities();
+      const constraints = {};
+
+      // Point-of-interest focus, where supported (mostly Chrome/Android)
+      if (caps.pointsOfInterest) {
+        let px = x / rect.width;
+        let py = y / rect.height;
+        if (video.classList.contains('mirrored')) px = 1 - px;
+        constraints.pointsOfInterest = [{ x: px, y: py }];
+      }
+      if (caps.focusMode && caps.focusMode.includes('single-shot')) {
+        constraints.focusMode = 'single-shot';
+      } else if (caps.focusMode && caps.focusMode.includes('continuous')) {
+        constraints.focusMode = 'continuous';
+      }
+
+      if (Object.keys(constraints).length) {
+        await track.applyConstraints({ advanced: [constraints] });
+      }
+    } catch (_) {
+      // device/browser doesn't support manual focus control — the ring
+      // animation still gives the person feedback that the tap landed
+    }
+  }
+
+  let lastFocusTouchTime = 0;
+  frameInner.addEventListener('touchend', (e) => {
+    if (video.style.display === 'none') return;
+    if (e.target.closest('button, .iconbtn, .status')) return;
+    if (!e.changedTouches || !e.changedTouches.length) return;
+    lastFocusTouchTime = Date.now();
+    const t = e.changedTouches[0];
+    focusAt(t.clientX, t.clientY);
+  }, { passive: true });
+  frameInner.addEventListener('click', (e) => {
+    if (video.style.display === 'none') return; // only while live camera is showing
+    if (e.target.closest('button, .iconbtn, .status')) return;
+    if (Date.now() - lastFocusTouchTime < 600) return; // touch already handled this tap
+    focusAt(e.clientX, e.clientY);
+  });
 
   function applyFilm1Look(ctx, w, h) {
     // Moody cinematic 90s pass: darker overall exposure, warm amber pockets
