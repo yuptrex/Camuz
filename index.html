@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0">
+<meta name="theme-color" content="#FBF6EC">
 <title>Snap ✎ Camera</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Nunito:wght@500;700;800&display=swap" rel="stylesheet">
@@ -36,25 +37,30 @@
   /* ── Header, hand-lettered ── */
   header{
     display:flex;
-    align-items:baseline;
-    justify-content:space-between;
+    align-items:center;
+    justify-content:center;
     padding: 2px 6px;
   }
-  header h1{
-    font-family:'Kalam', cursive;
-    font-weight:700;
-    font-size: 26px;
-    margin:0;
-    transform: rotate(-1.5deg);
-    display:inline-block;
+  .banner{
+    position:relative;
+    width:100%;
+    max-width: 420px;
+    border-radius: 18px;
+    overflow:hidden;
+    filter: url(#roughen);
+    box-shadow: 0 3px 0 var(--ink);
+    background:#1B1916;
   }
-  header h1 .dot{ color: var(--red); }
-  header .tagline{
-    font-size:11px;
-    color: var(--pencil);
-    font-weight:700;
-    letter-spacing:.02em;
+  .banner img{
+    display:block;
+    width:100%;
+    height:auto;
   }
+  .banner .tape{
+    width:46px; height:18px;
+  }
+  .banner .tape.tl{ top:-7px; left:10px; }
+  .banner .tape.tr{ top:-7px; right:10px; }
 
   /* ── Camera frame: wobbly hand-drawn border via SVG filter ── */
   .frame{
@@ -137,29 +143,32 @@
     color: var(--ink);
   }
 
-  /* ── Filter strip ── */
+  /* ── Filter strip: three side-by-side buttons, right-to-left order (90s-2 / 90s-1 / Normal) ── */
   .filter-strip{
     display:flex;
+    flex-direction:row-reverse;
     gap:8px;
     padding: 0 2px;
-    overflow-x:auto;
   }
   .filter-chip{
     flex:1;
+    min-width:0;
     display:flex;
     align-items:center;
     justify-content:center;
-    gap:7px;
+    gap:6px;
     font-family:'Kalam',cursive;
-    font-size:14px;
+    font-size:13px;
     font-weight:700;
     background: var(--paper-dim);
     border: 2px solid var(--ink);
     border-radius: 12px;
-    padding: 8px 6px;
+    padding: 8px 4px;
     cursor:pointer;
     color: var(--ink);
     white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
   }
   .filter-chip:active{ transform: translateY(1px); }
   .filter-chip.active{
@@ -173,7 +182,8 @@
     flex-shrink:0;
   }
   .fc-none{ background: #ddd; }
-  .fc-film{ background: linear-gradient(135deg, #E8B927, #7a5230); }
+  .fc-film1{ background: linear-gradient(135deg, #E8B927, #7a5230); }
+  .fc-film2{ background: linear-gradient(135deg, #E8543E, #7a5f9c); }
   .pill{
     font-family:'Kalam',cursive;
     font-size:13px;
@@ -433,6 +443,50 @@
     color: var(--pencil);
     font-weight:700;
   }
+
+  /* ── Upload progress overlay ── */
+  .upload-overlay{
+    position:absolute; inset:0;
+    display:none;
+    align-items:center; justify-content:center;
+    flex-direction:column;
+    gap:16px;
+    padding: 28px;
+    background: rgba(34,31,27,.72);
+    z-index:7;
+  }
+  .upload-overlay.show{ display:flex; }
+  .upload-ring-wrap{
+    position:relative;
+    width:96px; height:96px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .upload-ring-wrap svg{ width:96px; height:96px; transform: rotate(-90deg); }
+  .upload-ring-bg{
+    fill:none;
+    stroke: rgba(251,246,236,.25);
+    stroke-width: 8;
+  }
+  .upload-ring-fg{
+    fill:none;
+    stroke: var(--marker);
+    stroke-width: 8;
+    stroke-linecap: round;
+    transition: stroke-dashoffset .15s ease;
+  }
+  .upload-pct{
+    position:absolute;
+    font-family:'Kalam',cursive;
+    font-size:20px;
+    font-weight:700;
+    color: var(--paper);
+  }
+  .upload-label{
+    font-family:'Kalam',cursive;
+    font-size:15px;
+    color: var(--paper);
+    text-align:center;
+  }
 </style>
 </head>
 <body>
@@ -447,8 +501,11 @@
 
 <div class="app">
   <header>
-    <h1>Snap<span class="dot">.</span></h1>
-    <div class="tagline">tap the sun to shoot</div>
+    <div class="banner">
+      <div class="tape tl"></div>
+      <div class="tape tr"></div>
+      <img src="12.png" alt="Snap. — tap the sun to shoot">
+    </div>
   </header>
 
   <div class="frame">
@@ -462,6 +519,18 @@
         <div class="fp-icon" id="fpIcon">📄</div>
         <div class="fp-name" id="fpName"></div>
         <div class="fp-size" id="fpSize"></div>
+      </div>
+
+      <div class="upload-overlay" id="uploadOverlay">
+        <div class="upload-ring-wrap">
+          <svg viewBox="0 0 96 96">
+            <circle class="upload-ring-bg" cx="48" cy="48" r="42"/>
+            <circle class="upload-ring-fg" id="uploadRingFg" cx="48" cy="48" r="42"
+                    stroke-dasharray="263.9" stroke-dashoffset="263.9"/>
+          </svg>
+          <div class="upload-pct" id="uploadPct">0%</div>
+        </div>
+        <div class="upload-label" id="uploadLabel">Uploading…</div>
       </div>
 
       <div class="topbar">
@@ -498,8 +567,11 @@
     <button class="filter-chip active" data-filter="none">
       <span class="fc-swatch fc-none"></span>Normal
     </button>
-    <button class="filter-chip" data-filter="film">
-      <span class="fc-swatch fc-film"></span>90's Film
+    <button class="filter-chip" data-filter="film1">
+      <span class="fc-swatch fc-film1"></span>90s-1
+    </button>
+    <button class="filter-chip" data-filter="film2">
+      <span class="fc-swatch fc-film2"></span>90s-2
     </button>
   </div>
 
@@ -536,7 +608,7 @@
           File
         </div>
       </div>
-      <p class="sheet-hint">Max size 50MB</p>
+      <p class="sheet-hint">Max size 1GB</p>
       <button class="sheet-cancel" id="sheetCancel">Cancel</button>
     </div>
   </div>
@@ -586,12 +658,16 @@
   const fpIcon = document.getElementById('fpIcon');
   const fpName = document.getElementById('fpName');
   const fpSize = document.getElementById('fpSize');
+  const uploadOverlay = document.getElementById('uploadOverlay');
+  const uploadRingFg = document.getElementById('uploadRingFg');
+  const uploadPct = document.getElementById('uploadPct');
+  const uploadLabel = document.getElementById('uploadLabel');
 
   let currentStream = null;
   let facingMode = 'environment';
   let capturedBlob = null;
-  let activeFilter = 'none'; // 'none' | 'film'
-  const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50MB
+  let activeFilter = 'none'; // 'none' | 'film1' | 'film2'
+  const MAX_FILE_BYTES = 1024 * 1024 * 1024; // 1GB
 
   // attachedItem: { kind: 'image'|'document', blob, name, mime } or null.
   // When set, this takes over the "capturedBlob" send flow.
@@ -625,7 +701,7 @@
 
   function enterAttachedReview(file, kind) {
     if (file.size > MAX_FILE_BYTES) {
-      showToast('Too big — max size is 50MB', 'err');
+      showToast('Too big — max size is 1GB', 'err');
       return;
     }
     attachedItem = { kind, blob: file, name: file.name, mime: file.type };
@@ -742,7 +818,7 @@
   switchBtn.addEventListener('click', flipCamera);
   switchBtnBottom.addEventListener('click', flipCamera);
 
-  function applyFilmLook(ctx, w, h) {
+  function applyFilm1Look(ctx, w, h) {
     // Moody cinematic 90s pass: darker overall exposure, warm amber pockets
     // in the highlights only (not a flat cast over everything), crushed
     // shadows, filmic grain, and scattered dust/light-speck particles
@@ -851,6 +927,94 @@
     ctx.fillText(stamp, px, py);
   }
 
+  function applyFilm2Look(ctx, w, h) {
+    // Muted 80s print/halftone pass — faded, slightly desaturated, cool-leaning
+    // rather than a heavy yellow cast, plus a halftone dot texture instead of
+    // plain grain (closer to old newsprint/photocopy reproductions).
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const d = imgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      let r = d[i], g = d[i + 1], b = d[i + 2];
+
+      // desaturate toward gray a bit, so it reads as "faded" not "colorful"
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      const desat = 0.28;
+      r = r + (lum - r) * desat;
+      g = g + (lum - g) * desat;
+      b = b + (lum - b) * desat;
+
+      // gentle contrast fade with a lifted floor (faded print blacks)
+      const fade = 0.86, floor = 22;
+      r = r * fade + floor;
+      g = g * fade + floor;
+      b = b * fade + floor;
+
+      // very light warm bias only — nowhere near as strong as before
+      r *= 1.035;
+      g *= 1.01;
+      b *= 0.95;
+
+      d[i] = r > 255 ? 255 : r < 0 ? 0 : r;
+      d[i + 1] = g > 255 ? 255 : g < 0 ? 0 : g;
+      d[i + 2] = b > 255 ? 255 : b < 0 ? 0 : b;
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    // halftone dot grid: faint dark dots layered over the image, spacing
+    // driven by local brightness so shadows get denser dots like a print scan
+    ctx.save();
+    const cell = Math.max(3, Math.round(w / 180));
+    for (let y = 0; y < h; y += cell) {
+      for (let x = 0; x < w; x += cell) {
+        const idx = (Math.floor(y) * w + Math.floor(x)) * 4;
+        const lum = (d[idx] + d[idx + 1] + d[idx + 2]) / 3;
+        const density = 1 - lum / 255; // darker area -> bigger dot
+        if (density > 0.04) {
+          ctx.fillStyle = 'rgba(20,18,15,' + Math.min(0.16, density * 0.22) + ')';
+          const r = (cell * 0.5) * density;
+          ctx.beginPath();
+          ctx.arc(x + cell / 2, y + cell / 2, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+    ctx.restore();
+
+    // subtle grain on top of the halftone
+    const grainCount = Math.round((w * h) / 1600);
+    ctx.save();
+    for (let i = 0; i < grainCount; i++) {
+      const x = Math.random() * w;
+      const y = Math.random() * h;
+      const shade = Math.random() < 0.5 ? 0 : 255;
+      ctx.globalAlpha = Math.random() * 0.08;
+      ctx.fillStyle = shade === 0 ? '#000' : '#fff';
+      ctx.fillRect(x, y, 1.3, 1.3);
+    }
+    ctx.restore();
+
+    // soft vignette
+    const vg = ctx.createRadialGradient(w / 2, h / 2, h * 0.32, w / 2, h / 2, h * 0.82);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(0,0,0,0.32)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, w, h);
+
+    // burned-in LCD date stamp
+    const now2 = new Date();
+    const stamp2 = `${String(now2.getMonth() + 1).padStart(2, '0')} ${String(now2.getDate()).padStart(2, '0')} ${now2.getFullYear()}`;
+    const fontSize2 = Math.max(16, Math.round(w * 0.032));
+    ctx.font = `italic 700 ${fontSize2}px 'Courier New', monospace`;
+    ctx.textBaseline = 'bottom';
+    ctx.textAlign = 'right';
+    const px2 = w - fontSize2 * 0.9;
+    const py2 = h - fontSize2 * 0.7;
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillText(stamp2, px2 + 1.5, py2 + 1.5);
+    ctx.fillStyle = '#FF9640';
+    ctx.fillText(stamp2, px2, py2);
+  }
+
   shutterBtn.addEventListener('click', () => {
     if (!currentStream) return;
     const w = video.videoWidth, h = video.videoHeight;
@@ -879,8 +1043,11 @@
       }, 'image/jpeg', 0.92);
     };
 
-    if (activeFilter === 'film') {
-      applyFilmLook(ctx, w, h);
+    if (activeFilter === 'film1') {
+      applyFilm1Look(ctx, w, h);
+      finish();
+    } else if (activeFilter === 'film2') {
+      applyFilm2Look(ctx, w, h);
       finish();
     } else {
       finish();
@@ -899,26 +1066,68 @@
 
   retakeBtn.addEventListener('click', resetToCamera);
 
-  async function sendPhotoTo(chatId, blob) {
-    const form = new FormData();
-    form.append('chat_id', chatId);
-    form.append('photo', blob, `snap-${Date.now()}.jpg`);
-    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, { method: 'POST', body: form });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.description || 'Telegram API error');
-    return data;
+  const UPLOAD_RING_CIRC = 263.9; // 2 * PI * 42
+
+  function setUploadProgress(pct) {
+    const clamped = Math.max(0, Math.min(100, pct));
+    const offset = UPLOAD_RING_CIRC * (1 - clamped / 100);
+    uploadRingFg.style.strokeDashoffset = offset.toFixed(1);
+    uploadPct.textContent = Math.round(clamped) + '%';
   }
 
-  async function sendDocumentTo(chatId, blob, filename) {
-    const form = new FormData();
-    form.append('chat_id', chatId);
+  function showUploadOverlay(label) {
+    uploadLabel.textContent = label || 'Uploading…';
+    setUploadProgress(0);
+    uploadOverlay.classList.add('show');
+  }
+
+  function hideUploadOverlay() {
+    uploadOverlay.classList.remove('show');
+  }
+
+  // Uses XMLHttpRequest (rather than fetch) specifically so we get real
+  // upload progress events — fetch has no reliable cross-browser upload
+  // progress API. Reports 0–100% as the blob actually leaves the device.
+  function telegramUpload(method, chatId, fieldName, blob, filename) {
+    return new Promise((resolve, reject) => {
+      const form = new FormData();
+      form.append('chat_id', chatId);
+      form.append(fieldName, blob, filename);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `https://api.telegram.org/bot${BOT_TOKEN}/${method}`);
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          setUploadProgress((e.loaded / e.total) * 100);
+        }
+      };
+
+      xhr.onload = () => {
+        let data;
+        try { data = JSON.parse(xhr.responseText); } catch (_) { data = null; }
+        if (xhr.status >= 200 && xhr.status < 300 && data && data.ok) {
+          setUploadProgress(100);
+          resolve(data);
+        } else {
+          reject(new Error((data && data.description) || `Upload failed (${xhr.status})`));
+        }
+      };
+      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.onabort = () => reject(new Error('Upload cancelled'));
+
+      xhr.send(form);
+    });
+  }
+
+  function sendPhotoTo(chatId, blob) {
+    return telegramUpload('sendPhoto', chatId, 'photo', blob, `snap-${Date.now()}.jpg`);
+  }
+
+  function sendDocumentTo(chatId, blob, filename) {
     // Images sent via the "file" flow (rather than captured photos) still go
     // through sendDocument so they arrive uncompressed / as the original file.
-    form.append('document', blob, filename || `file-${Date.now()}`);
-    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendDocument`, { method: 'POST', body: form });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.description || 'Telegram API error');
-    return data;
+    return telegramUpload('sendDocument', chatId, 'document', blob, filename || `file-${Date.now()}`);
   }
 
   sendBtn.addEventListener('click', async () => {
@@ -926,6 +1135,7 @@
     sendBtn.disabled = true;
     retakeBtn.disabled = true;
     sendBtn.innerHTML = '<span class="spinner"></span> Sending…';
+    showUploadOverlay(attachedItem ? 'Uploading…' : 'Sending photo…');
 
     let lastError = null, sent = false;
 
@@ -955,6 +1165,8 @@
         }
       }
     }
+
+    hideUploadOverlay();
 
     if (sent) {
       showToast('Sent! Check Telegram ✓', 'ok');
