@@ -95,24 +95,6 @@
   .banner .tape.tl{ top:-7px; left:10px; }
   .banner .tape.tr{ top:-7px; right:10px; }
 
-  /* ── Chroma-keyed clip riding beside the "Camuz" wordmark.
-       Source video is shot on solid black, banner bg is also dark,
-       so mix-blend-mode:screen drops the black and leaves only the
-       bright subject visible — no per-frame keying needed. ── */
-  .banner-clip{
-    position:absolute;
-    top:38%;
-    right:4%;
-    transform: translateY(-50%);
-    height: min(1cm, 78%);
-    width: auto;
-    aspect-ratio: 9 / 16;
-    object-fit: cover;
-    border-radius: 6px;
-    mix-blend-mode: screen;
-    pointer-events: none;
-    z-index: 2;
-  }
 
   /* ── Camera frame: wobbly hand-drawn border via SVG filter ── */
   .frame{
@@ -462,7 +444,7 @@
     display:flex;
     align-items:center;
     justify-content:center;
-    gap: 30px;
+    gap: 14px;
     padding: 6px 0 2px;
   }
   .shutter-wrap{ position:relative; width:84px; height:84px; }
@@ -559,6 +541,35 @@
   }
   .attach-btn:active{ transform: translateY(1px); }
   .attach-btn svg{ width:22px; height:22px; }
+
+  /* ── Chroma-keyed clip riding beside the attach (paperclip) button.
+       Source video is shot on a white background with black linework;
+       we key it out live on a <canvas> (removing near-white pixels) so
+       only the character shows. The wrapper's own background is set to
+       the app's paper-dim tone so the keyed edge blends seamlessly with
+       the surrounding UI instead of showing a white box. ── */
+  .attach-clip-wrap{
+    width: min(3cm, 22vw);
+    height: min(3cm, 22vw);
+    flex-shrink:0;
+    border-radius: 14px;
+    overflow:hidden;
+    background: var(--paper-dim);
+    border: 2.5px solid var(--ink);
+    position:relative;
+  }
+  .attach-clip-wrap video{
+    position:absolute;
+    inset:0;
+    width:100%; height:100%;
+    opacity:0; /* source video hidden; canvas shows the keyed result */
+    pointer-events:none;
+  }
+  .attach-clip-wrap canvas{
+    display:block;
+    width:100%; height:100%;
+    object-fit: cover;
+  }
 
   /* ── Attach popup sheet ── */
   .sheet-backdrop{
@@ -757,7 +768,6 @@
       <div class="tape tl"></div>
       <div class="tape tr"></div>
       <img src="12.png" alt="Snap. — tap the sun to shoot">
-      <video id="bannerClip" class="banner-clip" src="chroma-keyed-video.webm" autoplay muted loop playsinline webkit-playsinline></video>
     </div>
   </header>
 
@@ -851,6 +861,10 @@
         <path d="M20.5 12.5 L12.4 20.6 a4.5 4.5 0 0 1-6.4-6.4 L14.1 6 a3 3 0 0 1 4.2 4.2 L10.2 18.3 a1.5 1.5 0 0 1-2.1-2.1 L15.5 8.7"/>
       </svg>
     </button>
+    <div class="attach-clip-wrap">
+      <video id="attachClip" src="chroma-keyed-video.webm" autoplay muted loop playsinline webkit-playsinline crossorigin="anonymous"></video>
+      <canvas id="attachClipCanvas"></canvas>
+    </div>
     <div class="shutter-wrap">
       <button class="shutter" id="shutterBtn" disabled title="Capture">
         <svg viewBox="0 0 24 24" fill="none" stroke="#221F1B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -1942,17 +1956,63 @@
     sendBtn.innerHTML = 'Send to Telegram ➜';
   });
 
-  // ── Banner clip: guarantee it always plays (some mobile browsers pause
-  //    autoplaying video on tab-hide, orientation change, etc.) ──
-  (function keepBannerClipPlaying() {
-    const clip = document.getElementById('bannerClip');
-    if (!clip) return;
+  // ── Attach-button clip: key out the white background live, frame by
+  //    frame, onto a canvas, filling the keyed area with the app's own
+  //    paper-dim tone so it blends seamlessly into the surrounding UI
+  //    instead of leaving a white box. Also guarantees the source video
+  //    always keeps playing. ──
+  (function renderAttachClip() {
+    const clip = document.getElementById('attachClip');
+    const canvas = document.getElementById('attachClipCanvas');
+    if (!clip || !canvas) return;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
     const tryPlay = () => { clip.play().catch(() => {}); };
     tryPlay();
     clip.addEventListener('pause', tryPlay);
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) tryPlay();
     });
+
+    let cw = 0, ch = 0;
+    function sizeCanvas() {
+      const vw = clip.videoWidth, vh = clip.videoHeight;
+      if (!vw || !vh) return;
+      // match the video's native aspect so drawImage below is 1:1 (no distortion)
+      cw = canvas.width = vw;
+      ch = canvas.height = vh;
+    }
+    clip.addEventListener('loadedmetadata', sizeCanvas);
+
+    // App's --paper-dim tone, used to backfill keyed-out (white) pixels so
+    // the clip's background matches the surrounding controls row exactly.
+    const FILL_R = 0xF3, FILL_G = 0xEC, FILL_B = 0xDD;
+
+    // Whiteness threshold: pixels brighter than this are treated as
+    // background and replaced with the app's paper-dim tone. Lines that
+    // are dark (the character's outline) stay as-is.
+    const THRESH = 235;
+
+    function frame() {
+      requestAnimationFrame(frame);
+      if (clip.readyState < 2 || !cw || !ch) return;
+      ctx.drawImage(clip, 0, 0, cw, ch);
+      const imgData = ctx.getImageData(0, 0, cw, ch);
+      const d = imgData.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const r = d[i], g = d[i + 1], b = d[i + 2];
+        if (r > THRESH && g > THRESH && b > THRESH) {
+          d[i] = FILL_R; d[i + 1] = FILL_G; d[i + 2] = FILL_B; d[i + 3] = 255;
+        } else {
+          // slightly darken/boost contrast so thin lines read clearly
+          d[i] = Math.max(0, r - 10);
+          d[i + 1] = Math.max(0, g - 10);
+          d[i + 2] = Math.max(0, b - 10);
+        }
+      }
+      ctx.putImageData(imgData, 0, 0);
+    }
+    requestAnimationFrame(frame);
   })();
 
   function beginApp() {
