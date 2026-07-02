@@ -148,11 +148,18 @@
     display:flex;
     flex-direction:row-reverse;
     gap:8px;
-    padding: 0 2px;
+    padding: 0 2px 4px;
+    overflow-x:auto;
+    overflow-y:hidden;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
   }
+  .filter-strip::-webkit-scrollbar{ display:none; }
   .filter-chip{
-    flex:1;
-    min-width:0;
+    flex: 0 0 auto;
+    min-width:84px;
+    scroll-snap-align: start;
     display:flex;
     align-items:center;
     justify-content:center;
@@ -163,7 +170,7 @@
     background: var(--paper-dim);
     border: 2px solid var(--ink);
     border-radius: 12px;
-    padding: 8px 4px;
+    padding: 8px 12px;
     cursor:pointer;
     color: var(--ink);
     white-space:nowrap;
@@ -186,6 +193,7 @@
   .fc-film2{ background: linear-gradient(135deg, #E8543E, #7a5f9c); }
   .fc-dreamy{ background: linear-gradient(135deg, #cdd3dc, #5c6472); }
   .fc-pinksky{ background: linear-gradient(135deg, #f3b3ae, #6e3a3d); }
+  .fc-nightlife{ background: linear-gradient(135deg, #ffd23f, #2a1f3d); }
   .pill{
     font-family:'Kalam',cursive;
     font-size:13px;
@@ -581,6 +589,9 @@
     <button class="filter-chip" data-filter="pinksky">
       <span class="fc-swatch fc-pinksky"></span>Pink Sky
     </button>
+    <button class="filter-chip" data-filter="nightlife">
+      <span class="fc-swatch fc-nightlife"></span>Nightlife
+    </button>
   </div>
 
   <div class="controls" id="captureControls">
@@ -961,6 +972,224 @@
     ctx.fillText(stamp, px, py);
   }
 
+  // ---- MediaPipe Selfie Segmentation (loaded lazily, only if the
+  // Nightlife filter is actually used) ----
+  let selfieSegmenter = null;
+  let selfieSegmenterLoading = null;
+
+  function loadSelfieSegmenter() {
+    if (selfieSegmenter) return Promise.resolve(selfieSegmenter);
+    if (selfieSegmenterLoading) return selfieSegmenterLoading;
+
+    selfieSegmenterLoading = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js';
+      script.crossOrigin = 'anonymous';
+      script.onload = () => {
+        try {
+          const seg = new SelfieSegmentation({
+            locateFile: (file) =>
+              `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+          });
+          seg.setOptions({ modelSelection: 1 }); // 1 = "landscape" model, better for full-scene shots
+          selfieSegmenter = seg;
+          resolve(seg);
+        } catch (err) {
+          reject(err);
+        }
+      };
+      script.onerror = () => reject(new Error('Could not load the segmentation model — check your connection.'));
+      document.head.appendChild(script);
+    });
+
+    return selfieSegmenterLoading;
+  }
+
+  // Runs the segmenter on a still frame and returns a Canvas containing the
+  // person-mask (white = person, black = background, grayscale in between).
+  function getSelfieMask(sourceCanvas, w, h) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error('Segmentation timed out'));
+      }, 12000);
+
+      loadSelfieSegmenter().then((seg) => {
+        seg.onResults((results) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          const maskCanvas = document.createElement('canvas');
+          maskCanvas.width = w;
+          maskCanvas.height = h;
+          const mctx = maskCanvas.getContext('2d');
+          mctx.drawImage(results.segmentationMask, 0, 0, w, h);
+          resolve(maskCanvas);
+        });
+        seg.send({ image: sourceCanvas }).catch((err) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          reject(err);
+        });
+      }).catch((err) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        reject(err);
+      });
+    });
+  }
+
+  async function applyNightlifeLook(ctx, w, h) {
+    // "Sharp subject, glowing streaky background" look: real person
+    // segmentation splits the shot into subject + background, the
+    // background gets directional light-streaks + blur + brightness,
+    // the subject gets a clarity/sharpen pass, and the whole frame gets
+    // a punchy, bright color grade.
+
+    // snapshot of the plain capture before we touch anything
+    const original = document.createElement('canvas');
+    original.width = w; original.height = h;
+    original.getContext('2d').drawImage(ctx.canvas, 0, 0);
+
+    const maskCanvas = await getSelfieMask(original, w, h);
+
+    // --- background layer: streaked, blurred, brightened ---
+    const bgCanvas = document.createElement('canvas');
+    bgCanvas.width = w; bgCanvas.height = h;
+    const bctx = bgCanvas.getContext('2d');
+    bctx.drawImage(original, 0, 0);
+
+    // directional streaks (same technique as Dreamy, but stronger — this
+    // reference has visible light-trail streaking, not just softness)
+    const steps = 10;
+    const dist = Math.max(3, w * 0.012);
+    const angle = -12 * (Math.PI / 180);
+    const dx = Math.cos(angle) * dist;
+    const dy = Math.sin(angle) * dist;
+    bctx.save();
+    for (let i = 1; i <= steps; i++) {
+      bctx.globalAlpha = 0.14;
+      bctx.drawImage(bgCanvas, dx * i, dy * i);
+      bctx.globalAlpha = 0.14;
+      bctx.drawImage(bgCanvas, -dx * i * 0.5, -dy * i * 0.5);
+    }
+    bctx.globalAlpha = 1;
+    bctx.restore();
+
+    // soft gaussian on top so the streaks blend rather than look like hard copies
+    if (bctx.filter !== undefined) {
+      const blurred = document.createElement('canvas');
+      blurred.width = w; blurred.height = h;
+      const blctx = blurred.getContext('2d');
+      blctx.filter = `blur(${Math.max(3, w * 0.014)}px)`;
+      blctx.drawImage(bgCanvas, 0, 0);
+      bctx.clearRect(0, 0, w, h);
+      bctx.drawImage(blurred, 0, 0);
+    }
+
+    // brighten + boost saturation on the background so lights/reflections glow
+    const bgData = bctx.getImageData(0, 0, w, h);
+    const bd = bgData.data;
+    for (let i = 0; i < bd.length; i += 4) {
+      let r = bd[i], g = bd[i + 1], b = bd[i + 2];
+      const lum = r * 0.299 + g * 0.587 + b * 0.114;
+      const satMix = 1.35;
+      r = lum + (r - lum) * satMix;
+      g = lum + (g - lum) * satMix;
+      b = lum + (b - lum) * satMix;
+      r = r * 1.18 + 6;
+      g = g * 1.12 + 4;
+      b = b * 1.08;
+      bd[i] = r > 255 ? 255 : r < 0 ? 0 : r;
+      bd[i + 1] = g > 255 ? 255 : g < 0 ? 0 : g;
+      bd[i + 2] = b > 255 ? 255 : b < 0 ? 0 : b;
+    }
+    bctx.putImageData(bgData, 0, 0);
+
+    // --- subject layer: clarity / sharpen pass ---
+    const fgCanvas = document.createElement('canvas');
+    fgCanvas.width = w; fgCanvas.height = h;
+    const fctx = fgCanvas.getContext('2d');
+    fctx.drawImage(original, 0, 0);
+
+    // unsharp mask: subtract a blurred copy from the original, scaled, to
+    // punch up edge contrast without a full convolution kernel per pixel
+    if (fctx.filter !== undefined) {
+      const soft = document.createElement('canvas');
+      soft.width = w; soft.height = h;
+      const sctx = soft.getContext('2d');
+      sctx.filter = `blur(${Math.max(1, w * 0.0035)}px)`;
+      sctx.drawImage(fgCanvas, 0, 0);
+
+      const sharp = fctx.getImageData(0, 0, w, h);
+      const softData = sctx.getImageData(0, 0, w, h);
+      const sd = sharp.data, so = softData.data;
+      const amount = 0.6; // sharpen strength
+      for (let i = 0; i < sd.length; i += 4) {
+        for (let c = 0; c < 3; c++) {
+          const detail = sd[i + c] - so[i + c];
+          const v = sd[i + c] + detail * amount;
+          sd[i + c] = v > 255 ? 255 : v < 0 ? 0 : v;
+        }
+      }
+      fctx.putImageData(sharp, 0, 0);
+    }
+
+    // gentle brightness/contrast lift + saturation on the subject too, so
+    // colors (like the flowers) pop rather than look flat next to the glow
+    const fgData = fctx.getImageData(0, 0, w, h);
+    const fd = fgData.data;
+    for (let i = 0; i < fd.length; i += 4) {
+      let r = fd[i], g = fd[i + 1], b = fd[i + 2];
+      const lum = r * 0.299 + g * 0.587 + b * 0.114;
+      const satMix = 1.22;
+      r = lum + (r - lum) * satMix;
+      g = lum + (g - lum) * satMix;
+      b = lum + (b - lum) * satMix;
+      r = r * 1.08 + 4;
+      g = g * 1.06 + 3;
+      b = b * 1.05 + 2;
+      fd[i] = r > 255 ? 255 : r < 0 ? 0 : r;
+      fd[i + 1] = g > 255 ? 255 : g < 0 ? 0 : g;
+      fd[i + 2] = b > 255 ? 255 : b < 0 ? 0 : b;
+    }
+    fctx.putImageData(fgData, 0, 0);
+
+    // --- composite: subject over background, using the segmentation mask ---
+    // draw background first, then the subject clipped by its mask (the
+    // mask's alpha channel/luminance tells us how "person" each pixel is)
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(bgCanvas, 0, 0);
+
+    // build a masked version of the subject layer: use the selfie mask as
+    // an alpha channel via destination-in on a copy
+    const maskedFg = document.createElement('canvas');
+    maskedFg.width = w; maskedFg.height = h;
+    const mfctx = maskedFg.getContext('2d');
+    mfctx.drawImage(fgCanvas, 0, 0);
+    mfctx.globalCompositeOperation = 'destination-in';
+    mfctx.drawImage(maskCanvas, 0, 0);
+    mfctx.globalCompositeOperation = 'source-over';
+
+    ctx.drawImage(maskedFg, 0, 0);
+
+    // fine grain across the whole frame to tie it together
+    ctx.save();
+    const grainCount = Math.round((w * h) / 1800);
+    for (let i = 0; i < grainCount; i++) {
+      const x = Math.random() * w;
+      const y = Math.random() * h;
+      ctx.globalAlpha = Math.random() * 0.04;
+      ctx.fillStyle = Math.random() < 0.5 ? '#000' : '#fff';
+      ctx.fillRect(x, y, 1.1, 1.1);
+    }
+    ctx.restore();
+  }
+
   function applyDreamyBlurLook(ctx, w, h) {
     // Soft, hazy "aesthetic blur" look: gentle motion-streak softness,
     // a glowing bloom lifted from the highlights, desaturated cool-dusk
@@ -1245,7 +1474,7 @@
     ctx.fillText(stamp2, px2, py2);
   }
 
-  shutterBtn.addEventListener('click', () => {
+  shutterBtn.addEventListener('click', async () => {
     if (!currentStream) return;
     const w = video.videoWidth, h = video.videoHeight;
     if (!w || !h) return;
@@ -1288,6 +1517,16 @@
       finish();
     } else if (activeFilter === 'pinksky') {
       applyPinkSkyLook(ctx, w, h);
+      finish();
+    } else if (activeFilter === 'nightlife') {
+      shutterBtn.disabled = true;
+      showToast('Working on it…', '');
+      try {
+        await applyNightlifeLook(ctx, w, h);
+      } catch (err) {
+        console.error('Nightlife filter failed:', err);
+        showToast("Couldn't process that one — try again?", 'err');
+      }
       finish();
     } else {
       finish();
