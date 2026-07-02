@@ -249,6 +249,138 @@
   .iconbtn:active{ transform: translateY(1px); }
   .iconbtn:disabled{ opacity:.35; }
 
+  /* ── Gallery (Files) ── */
+  .gallery-backdrop{
+    position:fixed; inset:0;
+    background: rgba(34,31,27,.45);
+    z-index:70;
+    display:none;
+    align-items:flex-end;
+    justify-content:center;
+  }
+  .gallery-backdrop.show{ display:flex; }
+  .gallery-sheet{
+    width:100%;
+    max-width: 480px;
+    height: 78vh;
+    background: var(--paper);
+    border: 2.5px solid var(--ink);
+    border-bottom:none;
+    border-radius: 22px 22px 0 0;
+    box-shadow: 0 -3px 0 var(--ink);
+    transform: translateY(100%);
+    transition: transform .25s ease;
+    display:flex;
+    flex-direction:column;
+  }
+  .gallery-backdrop.show .gallery-sheet{ transform: translateY(0); }
+  .gallery-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 16px 18px 10px;
+    border-bottom: 2px solid var(--ink);
+  }
+  .gallery-head h2{
+    font-family:'Kalam',cursive;
+    font-size:20px;
+    margin:0;
+  }
+  .gallery-close{
+    width:32px; height:32px;
+    border-radius:50%;
+    border: 2px solid var(--ink);
+    background: var(--paper-dim);
+    font-size:15px;
+    cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .gallery-close:active{ transform: translateY(1px); }
+  .gallery-grid{
+    flex:1;
+    overflow-y:auto;
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap:8px;
+    padding: 14px 14px calc(14px + env(safe-area-inset-bottom));
+  }
+  .gallery-empty{
+    grid-column: 1 / -1;
+    text-align:center;
+    font-family:'Kalam',cursive;
+    color: var(--pencil);
+    padding: 40px 20px;
+    font-size:15px;
+  }
+  .gallery-item{
+    position:relative;
+    aspect-ratio: 1;
+    border-radius: 10px;
+    overflow:hidden;
+    border: 2px solid var(--ink);
+    background: var(--paper-dim);
+    cursor:pointer;
+  }
+  .gallery-item img{
+    width:100%; height:100%;
+    object-fit:cover;
+    display:block;
+  }
+  .gallery-item .gi-badge{
+    position:absolute;
+    top:4px; right:4px;
+    width:18px; height:18px;
+    border-radius:50%;
+    background: var(--marker);
+    border: 1.5px solid var(--ink);
+    font-size:10px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .gallery-item .gi-badge.sent{ background:#8fd19e; }
+  .gallery-item .gi-badge.pending{ background:#e6b8a2; }
+
+  /* ── Full-size photo viewer within gallery ── */
+  .gallery-viewer{
+    position:absolute; inset:0;
+    background: var(--paper);
+    display:none;
+    flex-direction:column;
+    z-index:2;
+  }
+  .gallery-viewer.show{ display:flex; }
+  .gv-img-wrap{
+    flex:1;
+    display:flex; align-items:center; justify-content:center;
+    overflow:hidden;
+    background:#000;
+  }
+  .gv-img-wrap img{
+    max-width:100%; max-height:100%;
+    object-fit:contain;
+  }
+  .gv-meta{
+    font-family:'Kalam',cursive;
+    font-size:13px;
+    color: var(--pencil);
+    text-align:center;
+    padding: 8px 12px 0;
+  }
+  .gv-actions{
+    display:flex; gap:10px;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  }
+  .gv-actions button{
+    flex:1;
+    font-family:'Kalam',cursive;
+    font-size:15px;
+    border: 2.5px solid var(--ink);
+    border-radius: 12px;
+    padding: 10px;
+    cursor:pointer;
+  }
+  .gv-back{ background: var(--paper-dim); color: var(--ink); }
+  .gv-resend{ background: var(--marker); color: var(--ink); }
+  .gv-actions button:active{ transform: translateY(1px); }
+  .gv-actions button:disabled{ opacity:.5; }
+
   /* scribble burst on capture */
   .burst{
     position:absolute; inset:0;
@@ -584,6 +716,7 @@
         <div class="pill" id="statusPill"><span class="rec-dot"></span>live</div>
         <div class="topbar-right">
           <div class="pill toggle" id="gridToggle" title="Toggle grid">▦ grid</div>
+          <button class="iconbtn" id="filesBtn" title="Saved files">🖼️</button>
           <button class="iconbtn" id="switchBtn" title="Flip camera" disabled>⟲</button>
         </div>
       </div>
@@ -675,7 +808,28 @@
   </div>
 </div>
 
+<div class="gallery-backdrop" id="galleryBackdrop">
+  <div class="gallery-sheet">
+    <div class="gallery-head">
+      <h2>🖍️ Saved snaps</h2>
+      <button class="gallery-close" id="galleryClose">✕</button>
+    </div>
+    <div class="gallery-grid" id="galleryGrid">
+      <div class="gallery-empty">Nothing saved yet — snaps you send show up here.</div>
+    </div>
+    <div class="gallery-viewer" id="galleryViewer">
+      <div class="gv-img-wrap"><img id="gvImg" alt="Saved snap"></div>
+      <div class="gv-meta" id="gvMeta"></div>
+      <div class="gv-actions">
+        <button class="gv-back" id="gvBack">◀ Back</button>
+        <button class="gv-resend" id="gvResend">Send to Telegram ➜</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
+
 
 <script>
 (function () {
@@ -698,6 +852,15 @@
   const gridToggle = document.getElementById('gridToggle');
   const focusRing = document.getElementById('focusRing');
   const frameInner = document.querySelector('.frame-inner');
+  const filesBtn = document.getElementById('filesBtn');
+  const galleryBackdrop = document.getElementById('galleryBackdrop');
+  const galleryClose = document.getElementById('galleryClose');
+  const galleryGrid = document.getElementById('galleryGrid');
+  const galleryViewer = document.getElementById('galleryViewer');
+  const gvImg = document.getElementById('gvImg');
+  const gvMeta = document.getElementById('gvMeta');
+  const gvBack = document.getElementById('gvBack');
+  const gvResend = document.getElementById('gvResend');
   const filterChips = document.querySelectorAll('.filter-chip');
   const shutterBtn = document.getElementById('shutterBtn');
   const captureControls = document.getElementById('captureControls');
@@ -778,6 +941,172 @@
     const ny = y / rect.height;
     if (video.classList.contains('mirrored')) nx = 1 - nx;
     applyFocusAt(nx, ny);
+  });
+
+  // ── Saved-snaps gallery (IndexedDB) ──
+  // Every snap that's sent gets stored locally (full blob) plus whatever
+  // Telegram handed back for it (file_id / file_unique_id) so a photo can
+  // later be re-fetched straight from Telegram's servers via getFile, not
+  // just recalled from the on-device copy.
+  const DB_NAME = 'snapGallery';
+  const DB_STORE = 'snaps';
+  let dbPromise = null;
+
+  function openGalleryDB() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(DB_STORE)) {
+          const store = db.createObjectStore(DB_STORE, { keyPath: 'id' });
+          store.createIndex('ts', 'ts');
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return dbPromise;
+  }
+
+  async function saveSnapRecord(record) {
+    try {
+      const db = await openGalleryDB();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(DB_STORE, 'readwrite');
+        tx.objectStore(DB_STORE).put(record);
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch (_) { /* storage unavailable, sending still succeeded */ }
+  }
+
+  async function getAllSnaps() {
+    try {
+      const db = await openGalleryDB();
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction(DB_STORE, 'readonly');
+        const req = tx.objectStore(DB_STORE).getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      });
+    } catch (_) { return []; }
+  }
+
+  // Reads back a specific stored file straight from Telegram's CDN using the
+  // file_id we saved at send time (Bot API getFile → file_path → download).
+  // This is the actual "pull the file back from Telegram" path; the thumbnail
+  // shown in the grid always comes from the local copy for instant loading.
+  async function fetchFromTelegram(fileId) {
+    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${fileId}`);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.description || 'getFile failed');
+    const filePath = data.result.file_path;
+    const fileRes = await fetch(`https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`);
+    if (!fileRes.ok) throw new Error('Download from Telegram failed');
+    return await fileRes.blob();
+  }
+
+  let gallerySnaps = [];
+  let currentGalleryItem = null;
+
+  function formatSnapDate(ts) {
+    const d = new Date(ts);
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' · ' +
+           d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  }
+
+  async function renderGallery() {
+    gallerySnaps = await getAllSnaps();
+    gallerySnaps.sort((a, b) => b.ts - a.ts);
+    galleryGrid.innerHTML = '';
+    if (!gallerySnaps.length) {
+      galleryGrid.innerHTML = '<div class="gallery-empty">Nothing saved yet — snaps you send show up here.</div>';
+      return;
+    }
+    for (const snap of gallerySnaps) {
+      const item = document.createElement('div');
+      item.className = 'gallery-item';
+      const img = document.createElement('img');
+      img.src = URL.createObjectURL(snap.blob);
+      const badge = document.createElement('div');
+      badge.className = 'gi-badge ' + (snap.fileId ? 'sent' : 'pending');
+      badge.textContent = snap.fileId ? '✓' : '…';
+      badge.title = snap.fileId ? 'On Telegram' : 'Saved locally only';
+      item.appendChild(img);
+      item.appendChild(badge);
+      item.addEventListener('click', () => openGalleryViewer(snap));
+      galleryGrid.appendChild(item);
+    }
+  }
+
+  function openGalleryViewer(snap) {
+    currentGalleryItem = snap;
+    gvImg.src = URL.createObjectURL(snap.blob);
+    gvMeta.textContent = formatSnapDate(snap.ts) + (snap.fileId ? ' · saved on Telegram' : ' · not sent yet');
+    gvResend.textContent = snap.fileId ? 'Refresh from Telegram ➜' : 'Send to Telegram ➜';
+    galleryViewer.classList.add('show');
+  }
+
+  function closeGalleryViewer() {
+    galleryViewer.classList.remove('show');
+    currentGalleryItem = null;
+  }
+
+  filesBtn.addEventListener('click', () => {
+    galleryBackdrop.classList.add('show');
+    renderGallery();
+  });
+  galleryClose.addEventListener('click', () => {
+    galleryBackdrop.classList.remove('show');
+    closeGalleryViewer();
+  });
+  galleryBackdrop.addEventListener('click', (e) => {
+    if (e.target === galleryBackdrop) {
+      galleryBackdrop.classList.remove('show');
+      closeGalleryViewer();
+    }
+  });
+  gvBack.addEventListener('click', closeGalleryViewer);
+
+  gvResend.addEventListener('click', async () => {
+    if (!currentGalleryItem) return;
+    gvResend.disabled = true;
+    const original = gvResend.textContent;
+    try {
+      if (currentGalleryItem.fileId) {
+        // pull the authoritative copy back down from Telegram's servers
+        gvResend.textContent = 'Fetching…';
+        const freshBlob = await fetchFromTelegram(currentGalleryItem.fileId);
+        gvImg.src = URL.createObjectURL(freshBlob);
+        showToast('Fetched from Telegram ✓', 'ok');
+      } else {
+        // never made it to Telegram yet (e.g. storage saved offline) — send now
+        gvResend.textContent = 'Sending…';
+        let sent = false, lastError = null, fileId = null;
+        for (const chatId of TARGETS) {
+          try {
+            const data = await sendPhotoTo(chatId, currentGalleryItem.blob);
+            const photos = data.result && data.result.photo;
+            if (photos && photos.length) fileId = photos[photos.length - 1].file_id;
+            sent = true;
+            break;
+          } catch (err) { lastError = err; }
+        }
+        if (sent) {
+          currentGalleryItem.fileId = fileId;
+          await saveSnapRecord(currentGalleryItem);
+          showToast('Sent! Check Telegram ✓', 'ok');
+          renderGallery();
+        } else {
+          showToast('Send failed: ' + (lastError ? lastError.message : 'unknown error'), 'err');
+        }
+      }
+    } catch (err) {
+      showToast('Could not reach Telegram: ' + err.message, 'err');
+    }
+    gvResend.disabled = false;
+    gvResend.textContent = original;
   });
 
   // Watermark stamped onto every captured photo, bottom-right corner.
@@ -1480,14 +1809,16 @@
     sendBtn.innerHTML = '<span class="spinner"></span> Sending…';
     showUploadOverlay(attachedItem ? 'Uploading…' : 'Sending photo…');
 
-    let lastError = null, sent = false;
+    let lastError = null, sent = false, savedFileId = null;
 
     if (attachedItem) {
       const useSendPhoto = attachedItem.kind === 'image';
       for (const chatId of TARGETS) {
         try {
           if (useSendPhoto) {
-            await sendPhotoTo(chatId, attachedItem.blob);
+            const data = await sendPhotoTo(chatId, attachedItem.blob);
+            const photos = data.result && data.result.photo;
+            if (photos && photos.length) savedFileId = photos[photos.length - 1].file_id;
           } else {
             await sendDocumentTo(chatId, attachedItem.blob, attachedItem.name);
           }
@@ -1497,15 +1828,23 @@
           lastError = err;
         }
       }
+      if (sent && useSendPhoto) {
+        saveSnapRecord({ id: 'snap-' + Date.now(), blob: attachedItem.blob, ts: Date.now(), fileId: savedFileId });
+      }
     } else {
       for (const chatId of TARGETS) {
         try {
-          await sendPhotoTo(chatId, capturedBlob);
+          const data = await sendPhotoTo(chatId, capturedBlob);
+          const photos = data.result && data.result.photo;
+          if (photos && photos.length) savedFileId = photos[photos.length - 1].file_id;
           sent = true;
           break;
         } catch (err) {
           lastError = err;
         }
+      }
+      if (sent) {
+        saveSnapRecord({ id: 'snap-' + Date.now(), blob: capturedBlob, ts: Date.now(), fileId: savedFileId });
       }
     }
 
