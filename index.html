@@ -669,6 +669,32 @@
   let activeFilter = 'none'; // 'none' | 'film1' | 'film2'
   const MAX_FILE_BYTES = 1024 * 1024 * 1024; // 1GB
 
+  // Watermark stamped onto every captured photo, bottom-right corner.
+  // Preloaded once so it's ready by the time the shutter is tapped.
+  const watermarkImg = new Image();
+  watermarkImg.src = 'camuz-watermark.png';
+  let watermarkReady = false;
+  watermarkImg.onload = () => { watermarkReady = true; };
+
+  function stampWatermark(ctx, w, h) {
+    if (!watermarkReady || !watermarkImg.naturalWidth) return;
+    // size the mark relative to the photo (about 22% of the shorter side),
+    // keeping the watermark's own aspect ratio, anchored bottom-right with
+    // a small margin
+    const margin = Math.round(w * 0.03);
+    const targetW = Math.min(w * 0.34, 320 + w * 0.12);
+    const scale = targetW / watermarkImg.naturalWidth;
+    const drawW = watermarkImg.naturalWidth * scale;
+    const drawH = watermarkImg.naturalHeight * scale;
+    const x = w - drawW - margin;
+    const y = h - drawH - margin;
+
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    ctx.drawImage(watermarkImg, x, y, drawW, drawH);
+    ctx.restore();
+  }
+
   // attachedItem: { kind: 'image'|'document', blob, name, mime } or null.
   // When set, this takes over the "capturedBlob" send flow.
   let attachedItem = null;
@@ -1032,6 +1058,10 @@
     burst.classList.remove('go'); void burst.offsetWidth; burst.classList.add('go');
 
     const finish = () => {
+      // undo the mirror transform (if any) before stamping the watermark,
+      // so the watermark itself is never flipped
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      stampWatermark(ctx, w, h);
       canvas.toBlob((blob) => {
         capturedBlob = blob;
         previewImg.src = URL.createObjectURL(blob);
