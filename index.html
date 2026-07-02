@@ -174,7 +174,6 @@
   }
   .fc-none{ background: #ddd; }
   .fc-film{ background: linear-gradient(135deg, #E8B927, #7a5230); }
-  .fc-doodle{ background: repeating-linear-gradient(45deg, #fff 0 2px, #221F1B 2px 3px); }
   .pill{
     font-family:'Kalam',cursive;
     font-size:13px;
@@ -312,6 +311,128 @@
   .toast.show{ opacity:1; transform: translateX(-50%) translateY(0); }
   .toast.err{ background: var(--red); }
   .toast.ok{ background: #2E7D4F; }
+
+  /* ── Attach button (doodle-style paperclip) ── */
+  .attach-btn{
+    width:50px; height:50px;
+    border-radius:50%;
+    background: var(--paper-dim);
+    border: 2.5px solid var(--ink);
+    font-size:20px;
+    cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+  }
+  .attach-btn:active{ transform: translateY(1px); }
+  .attach-btn svg{ width:22px; height:22px; }
+
+  /* ── Attach popup sheet ── */
+  .sheet-backdrop{
+    position:fixed; inset:0;
+    background: rgba(34,31,27,.45);
+    z-index:60;
+    display:none;
+    align-items:flex-end;
+    justify-content:center;
+  }
+  .sheet-backdrop.show{ display:flex; }
+  .sheet{
+    width:100%;
+    max-width: 480px;
+    background: var(--paper);
+    border: 2.5px solid var(--ink);
+    border-bottom:none;
+    border-radius: 22px 22px 0 0;
+    padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
+    box-shadow: 0 -3px 0 var(--ink);
+    transform: translateY(100%);
+    transition: transform .25s ease;
+  }
+  .sheet-backdrop.show .sheet{ transform: translateY(0); }
+  .sheet h2{
+    font-family:'Kalam',cursive;
+    font-size:20px;
+    margin: 0 0 14px;
+    text-align:center;
+    transform: rotate(-0.5deg);
+  }
+  .sheet-options{
+    display:flex;
+    gap:12px;
+    margin-bottom: 6px;
+  }
+  .sheet-opt{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:8px;
+    font-family:'Kalam',cursive;
+    font-size:15px;
+    font-weight:700;
+    background: var(--paper-dim);
+    border: 2.5px solid var(--ink);
+    border-radius: 16px;
+    padding: 18px 10px;
+    cursor:pointer;
+    color: var(--ink);
+  }
+  .sheet-opt:active{ transform: translateY(2px); }
+  .sheet-opt .sheet-icon{
+    width:44px; height:44px;
+    border-radius:50%;
+    background: var(--marker);
+    border: 2px solid var(--ink);
+    display:flex; align-items:center; justify-content:center;
+    font-size:20px;
+  }
+  .sheet-cancel{
+    display:block;
+    width:100%;
+    margin-top: 14px;
+    font-family:'Kalam',cursive;
+    font-size:15px;
+    background: none;
+    border: 2px solid var(--ink);
+    border-radius: 14px;
+    padding: 11px;
+    cursor:pointer;
+    color: var(--ink);
+  }
+  .sheet-cancel:active{ transform: translateY(1px); }
+  .sheet-hint{
+    font-size:11px;
+    color: var(--pencil);
+    text-align:center;
+    margin: 10px 0 0;
+    font-weight:700;
+  }
+
+  /* ── File preview (non-image attachments) ── */
+  .file-preview{
+    display:none;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    text-align:center;
+    padding: 28px;
+    height:100%;
+    color: var(--ink);
+  }
+  .file-preview.show{ display:flex; }
+  .file-preview .fp-icon{ font-size:44px; }
+  .file-preview .fp-name{
+    font-family:'Kalam',cursive;
+    font-size:16px;
+    word-break:break-all;
+    max-width: 260px;
+  }
+  .file-preview .fp-size{
+    font-size:12px;
+    color: var(--pencil);
+    font-weight:700;
+  }
 </style>
 </head>
 <body>
@@ -337,6 +458,11 @@
       <video id="video" autoplay playsinline muted></video>
       <canvas id="canvas"></canvas>
       <img id="previewImg" class="preview-img" style="display:none;" alt="Captured preview">
+      <div class="file-preview" id="filePreview">
+        <div class="fp-icon" id="fpIcon">📄</div>
+        <div class="fp-name" id="fpName"></div>
+        <div class="fp-size" id="fpSize"></div>
+      </div>
 
       <div class="topbar">
         <div class="pill" id="statusPill"><span class="rec-dot"></span>live</div>
@@ -375,13 +501,14 @@
     <button class="filter-chip" data-filter="film">
       <span class="fc-swatch fc-film"></span>90's Film
     </button>
-    <button class="filter-chip" data-filter="doodle">
-      <span class="fc-swatch fc-doodle"></span>Doodle
-    </button>
   </div>
 
   <div class="controls" id="captureControls">
-    <button class="side-btn" id="spacer" style="visibility:hidden;">⟲</button>
+    <button class="attach-btn" id="attachBtn" title="Attach file">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#221F1B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20.5 12.5 L12.4 20.6 a4.5 4.5 0 0 1-6.4-6.4 L14.1 6 a3 3 0 0 1 4.2 4.2 L10.2 18.3 a1.5 1.5 0 0 1-2.1-2.1 L15.5 8.7"/>
+      </svg>
+    </button>
     <div class="shutter-wrap">
       <button class="shutter" id="shutterBtn" disabled title="Capture">
         <svg viewBox="0 0 24 24" fill="none" stroke="#221F1B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -391,6 +518,27 @@
       </button>
     </div>
     <button class="side-btn" id="switchBtnBottom" title="Flip camera" disabled>⟲</button>
+  </div>
+
+  <input type="file" id="imageInput" accept="image/*" style="display:none;">
+  <input type="file" id="fileInput" style="display:none;">
+
+  <div class="sheet-backdrop" id="sheetBackdrop">
+    <div class="sheet">
+      <h2>Attach something ✎</h2>
+      <div class="sheet-options">
+        <div class="sheet-opt" id="optImage">
+          <div class="sheet-icon">🖼️</div>
+          Image
+        </div>
+        <div class="sheet-opt" id="optFile">
+          <div class="sheet-icon">📎</div>
+          File
+        </div>
+      </div>
+      <p class="sheet-hint">Max size 50MB</p>
+      <button class="sheet-cancel" id="sheetCancel">Cancel</button>
+    </div>
   </div>
 
   <div class="review-bar" id="reviewBar">
@@ -427,11 +575,88 @@
   const flashWhite = document.getElementById('flashWhite');
   const burst = document.getElementById('burst');
   const toast = document.getElementById('toast');
+  const attachBtn = document.getElementById('attachBtn');
+  const sheetBackdrop = document.getElementById('sheetBackdrop');
+  const optImage = document.getElementById('optImage');
+  const optFile = document.getElementById('optFile');
+  const sheetCancel = document.getElementById('sheetCancel');
+  const imageInput = document.getElementById('imageInput');
+  const fileInput = document.getElementById('fileInput');
+  const filePreview = document.getElementById('filePreview');
+  const fpIcon = document.getElementById('fpIcon');
+  const fpName = document.getElementById('fpName');
+  const fpSize = document.getElementById('fpSize');
 
   let currentStream = null;
   let facingMode = 'environment';
   let capturedBlob = null;
-  let activeFilter = 'none'; // 'none' | 'film' | 'doodle'
+  let activeFilter = 'none'; // 'none' | 'film'
+  const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50MB
+
+  // attachedItem: { kind: 'image'|'document', blob, name, mime } or null.
+  // When set, this takes over the "capturedBlob" send flow.
+  let attachedItem = null;
+
+  function formatBytes(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function openSheet() { sheetBackdrop.classList.add('show'); }
+  function closeSheet() { sheetBackdrop.classList.remove('show'); }
+
+  attachBtn.addEventListener('click', openSheet);
+  sheetCancel.addEventListener('click', closeSheet);
+  sheetBackdrop.addEventListener('click', (e) => {
+    if (e.target === sheetBackdrop) closeSheet();
+  });
+
+  optImage.addEventListener('click', () => {
+    closeSheet();
+    imageInput.value = '';
+    imageInput.click();
+  });
+  optFile.addEventListener('click', () => {
+    closeSheet();
+    fileInput.value = '';
+    fileInput.click();
+  });
+
+  function enterAttachedReview(file, kind) {
+    if (file.size > MAX_FILE_BYTES) {
+      showToast('Too big — max size is 50MB', 'err');
+      return;
+    }
+    attachedItem = { kind, blob: file, name: file.name, mime: file.type };
+    capturedBlob = null;
+
+    video.style.display = 'none';
+    captureControls.style.display = 'none';
+
+    if (kind === 'image') {
+      previewImg.src = URL.createObjectURL(file);
+      previewImg.style.display = 'block';
+      filePreview.classList.remove('show');
+    } else {
+      previewImg.style.display = 'none';
+      filePreview.classList.add('show');
+      const ext = (file.name.split('.').pop() || '').toUpperCase();
+      fpIcon.textContent = '📄';
+      fpName.textContent = file.name;
+      fpSize.textContent = (ext ? ext + ' · ' : '') + formatBytes(file.size);
+    }
+    reviewBar.classList.add('active');
+  }
+
+  imageInput.addEventListener('change', () => {
+    const file = imageInput.files && imageInput.files[0];
+    if (file) enterAttachedReview(file, 'image');
+  });
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files && fileInput.files[0];
+    if (file) enterAttachedReview(file, 'document');
+  });
 
   filterChips.forEach(chip => {
     chip.addEventListener('click', () => {
@@ -626,102 +851,6 @@
     ctx.fillText(stamp, px, py);
   }
 
-  function applyDoodleLook(ctx, w, h) {
-    // Mid-strength painterly conversion — noticeably illustrated with
-    // visible ink edges and some color simplification, but not as flat/
-    // posterized as a full paint conversion. Roughly halfway between a
-    // light touch-up and a full stylized repaint.
-    const src = ctx.getImageData(0, 0, w, h);
-    const sd = src.data;
-    const n = w * h;
-
-    // 1) Moderate smoothing to flatten texture into soft color regions
-    const smoothed = new Uint8ClampedArray(sd.length);
-    const radius = Math.max(1, Math.round(w / 480));
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        let rs = 0, gs = 0, bs = 0, count = 0;
-        for (let dy = -radius; dy <= radius; dy++) {
-          const yy = y + dy;
-          if (yy < 0 || yy >= h) continue;
-          for (let dx = -radius; dx <= radius; dx++) {
-            const xx = x + dx;
-            if (xx < 0 || xx >= w) continue;
-            const o = (yy * w + xx) * 4;
-            rs += sd[o]; gs += sd[o + 1]; bs += sd[o + 2];
-            count++;
-          }
-        }
-        const o = (y * w + x) * 4;
-        smoothed[o] = rs / count;
-        smoothed[o + 1] = gs / count;
-        smoothed[o + 2] = bs / count;
-      }
-    }
-
-    // 2) Blend smoothing in more strongly, mild posterize (more levels than
-    // the full version so it simplifies color without flat banding), and a
-    // moderate saturation lift
-    const out = ctx.createImageData(w, h);
-    const od = out.data;
-    const blend = 0.6;
-    const levels = 10;
-    const step = 255 / (levels - 1);
-    for (let i = 0; i < sd.length; i += 4) {
-      let r = sd[i] * (1 - blend) + smoothed[i] * blend;
-      let g = sd[i + 1] * (1 - blend) + smoothed[i + 1] * blend;
-      let b = sd[i + 2] * (1 - blend) + smoothed[i + 2] * blend;
-
-      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-      const sat = 1.22;
-      r = lum + (r - lum) * sat;
-      g = lum + (g - lum) * sat;
-      b = lum + (b - lum) * sat;
-
-      r = Math.round(r / step) * step;
-      g = Math.round(g / step) * step;
-      b = Math.round(b / step) * step;
-
-      od[i] = r > 255 ? 255 : r < 0 ? 0 : r;
-      od[i + 1] = g > 255 ? 255 : g < 0 ? 0 : g;
-      od[i + 2] = b > 255 ? 255 : b < 0 ? 0 : b;
-      od[i + 3] = 255;
-    }
-
-    // 3) Visible ink lines on clear edges — lower threshold and higher
-    // opacity than the light version, but not as thick/dark as full strength
-    const gray = new Float32Array(n);
-    for (let i = 0, p = 0; i < sd.length; i += 4, p++) {
-      gray[p] = 0.299 * sd[i] + 0.587 * sd[i + 1] + 0.114 * sd[i + 2];
-    }
-    const gxK = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
-    const gyK = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
-    const edgeThresh = 75;
-    for (let y = 1; y < h - 1; y++) {
-      for (let x = 1; x < w - 1; x++) {
-        const idx = y * w + x;
-        let gx = 0, gy = 0, k = 0;
-        for (let ky = -1; ky <= 1; ky++) {
-          for (let kx = -1; kx <= 1; kx++, k++) {
-            const v = gray[idx + ky * w + kx];
-            gx += v * gxK[k];
-            gy += v * gyK[k];
-          }
-        }
-        const mag = Math.sqrt(gx * gx + gy * gy);
-        if (mag > edgeThresh) {
-          const o = idx * 4;
-          const strength = Math.min(0.65, (mag - edgeThresh) / 260);
-          od[o] = od[o] * (1 - strength) + 30 * strength;
-          od[o + 1] = od[o + 1] * (1 - strength) + 26 * strength;
-          od[o + 2] = od[o + 2] * (1 - strength) + 24 * strength;
-        }
-      }
-    }
-
-    ctx.putImageData(out, 0, 0);
-  }
-
   shutterBtn.addEventListener('click', () => {
     if (!currentStream) return;
     const w = video.videoWidth, h = video.videoHeight;
@@ -750,12 +879,7 @@
       }, 'image/jpeg', 0.92);
     };
 
-    if (activeFilter === 'doodle') {
-      shutterBtn.disabled = true;
-      showToast('Painting your photo…');
-      // let the flash/burst animation paint before the heavy pixel loop runs
-      setTimeout(() => { applyDoodleLook(ctx, w, h); finish(); }, 30);
-    } else if (activeFilter === 'film') {
+    if (activeFilter === 'film') {
       applyFilmLook(ctx, w, h);
       finish();
     } else {
@@ -763,13 +887,17 @@
     }
   });
 
-  retakeBtn.addEventListener('click', () => {
+  function resetToCamera() {
     capturedBlob = null;
+    attachedItem = null;
     previewImg.style.display = 'none';
+    filePreview.classList.remove('show');
     video.style.display = 'block';
     captureControls.style.display = 'flex';
     reviewBar.classList.remove('active');
-  });
+  }
+
+  retakeBtn.addEventListener('click', resetToCamera);
 
   async function sendPhotoTo(chatId, blob) {
     const form = new FormData();
@@ -781,30 +909,56 @@
     return data;
   }
 
+  async function sendDocumentTo(chatId, blob, filename) {
+    const form = new FormData();
+    form.append('chat_id', chatId);
+    // Images sent via the "file" flow (rather than captured photos) still go
+    // through sendDocument so they arrive uncompressed / as the original file.
+    form.append('document', blob, filename || `file-${Date.now()}`);
+    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendDocument`, { method: 'POST', body: form });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.description || 'Telegram API error');
+    return data;
+  }
+
   sendBtn.addEventListener('click', async () => {
-    if (!capturedBlob) return;
+    if (!capturedBlob && !attachedItem) return;
     sendBtn.disabled = true;
     retakeBtn.disabled = true;
     sendBtn.innerHTML = '<span class="spinner"></span> Sending…';
 
     let lastError = null, sent = false;
-    for (const chatId of TARGETS) {
-      try {
-        await sendPhotoTo(chatId, capturedBlob);
-        sent = true;
-        break;
-      } catch (err) {
-        lastError = err;
+
+    if (attachedItem) {
+      const useSendPhoto = attachedItem.kind === 'image';
+      for (const chatId of TARGETS) {
+        try {
+          if (useSendPhoto) {
+            await sendPhotoTo(chatId, attachedItem.blob);
+          } else {
+            await sendDocumentTo(chatId, attachedItem.blob, attachedItem.name);
+          }
+          sent = true;
+          break;
+        } catch (err) {
+          lastError = err;
+        }
+      }
+    } else {
+      for (const chatId of TARGETS) {
+        try {
+          await sendPhotoTo(chatId, capturedBlob);
+          sent = true;
+          break;
+        } catch (err) {
+          lastError = err;
+        }
       }
     }
 
     if (sent) {
       showToast('Sent! Check Telegram ✓', 'ok');
-      capturedBlob = null;
-      previewImg.style.display = 'none';
-      video.style.display = 'block';
-      captureControls.style.display = 'flex';
-      reviewBar.classList.remove('active');
+      resetToCamera();
     } else {
       showToast('Send failed: ' + (lastError ? lastError.message : 'unknown error'), 'err');
     }
