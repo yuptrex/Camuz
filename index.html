@@ -681,7 +681,7 @@
     // size the mark relative to the photo (about 22% of the shorter side),
     // keeping the watermark's own aspect ratio, anchored bottom-right with
     // a small margin
-    const margin = Math.round(w * 0.03);
+    const margin = Math.round(w * 0.01);
     const targetW = Math.min(w * 0.34, 320 + w * 0.12);
     const scale = targetW / watermarkImg.naturalWidth;
     const drawW = watermarkImg.naturalWidth * scale;
