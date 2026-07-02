@@ -87,33 +87,6 @@
   video.mirrored{ transform: scaleX(-1); }
   canvas{ display:none; }
 
-  /* tap-to-focus ring */
-  .focus-ring{
-    position:absolute;
-    width:74px; height:74px;
-    margin-left:-37px; margin-top:-37px;
-    border:2px solid #fff;
-    border-radius:50%;
-    box-shadow: 0 0 0 1px rgba(0,0,0,.35);
-    pointer-events:none;
-    opacity:0;
-    z-index:5;
-  }
-  .focus-ring::after{
-    content:"";
-    position:absolute; inset:-1px;
-    border-radius:50%;
-    border:1px solid rgba(255,255,255,.6);
-  }
-  .focus-ring.active{
-    animation: focusPulse .55s cubic-bezier(.2,.8,.2,1) forwards;
-  }
-  @keyframes focusPulse{
-    0%   { opacity:1; transform: scale(1.35); border-color:#fff; }
-    60%  { opacity:1; transform: scale(1); border-color:#ffd23f; }
-    100% { opacity:0; transform: scale(1); border-color:#ffd23f; }
-  }
-
   /* washi-tape corner pins, purely decorative */
   .tape{
     position:absolute;
@@ -211,6 +184,7 @@
   .fc-none{ background: #ddd; }
   .fc-film1{ background: linear-gradient(135deg, #E8B927, #7a5230); }
   .fc-film2{ background: linear-gradient(135deg, #E8543E, #7a5f9c); }
+  .fc-dreamy{ background: linear-gradient(135deg, #cdd3dc, #5c6472); }
   .pill{
     font-family:'Kalam',cursive;
     font-size:13px;
@@ -540,7 +514,6 @@
     <div class="tape tr"></div>
     <div class="frame-inner">
       <video id="video" autoplay playsinline muted></video>
-      <div class="focus-ring" id="focusRing"></div>
       <canvas id="canvas"></canvas>
       <img id="previewImg" class="preview-img" style="display:none;" alt="Captured preview">
       <div class="file-preview" id="filePreview">
@@ -601,6 +574,9 @@
     <button class="filter-chip" data-filter="film2">
       <span class="fc-swatch fc-film2"></span>90s-2
     </button>
+    <button class="filter-chip" data-filter="dreamy">
+      <span class="fc-swatch fc-dreamy"></span>Dreamy
+    </button>
   </div>
 
   <div class="controls" id="captureControls">
@@ -658,8 +634,6 @@
   const TARGETS = [CHANNEL_ID, FALLBACK_USER_ID];
 
   const video = document.getElementById('video');
-  const focusRing = document.getElementById('focusRing');
-  const frameInner = document.querySelector('.frame-inner');
   const canvas = document.getElementById('canvas');
   const previewImg = document.getElementById('previewImg');
   const statusOverlay = document.getElementById('statusOverlay');
@@ -696,7 +670,7 @@
   let currentStream = null;
   let facingMode = 'environment';
   let capturedBlob = null;
-  let activeFilter = 'none'; // 'none' | 'film1' | 'film2'
+  let activeFilter = 'none'; // 'none' | 'film1' | 'film2' | 'dreamy'
   const MAX_FILE_BYTES = 1024 * 1024 * 1024; // 1GB
 
   // Watermark stamped onto every captured photo, bottom-right corner.
@@ -874,70 +848,6 @@
   switchBtn.addEventListener('click', flipCamera);
   switchBtnBottom.addEventListener('click', flipCamera);
 
-  // ---- Tap-to-focus ----
-  function showFocusRing(x, y) {
-    focusRing.style.left = x + 'px';
-    focusRing.style.top = y + 'px';
-    focusRing.classList.remove('active');
-    // force reflow so the animation restarts on rapid re-taps
-    void focusRing.offsetWidth;
-    focusRing.classList.add('active');
-  }
-
-  async function focusAt(clientX, clientY) {
-    const rect = frameInner.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
-    if (x < 0 || y < 0 || x > rect.width || y > rect.height) return;
-
-    showFocusRing(x, y);
-
-    if (!currentStream) return;
-    const track = currentStream.getVideoTracks()[0];
-    if (!track || !track.getCapabilities) return;
-
-    try {
-      const caps = track.getCapabilities();
-      const constraints = {};
-
-      // Point-of-interest focus, where supported (mostly Chrome/Android)
-      if (caps.pointsOfInterest) {
-        let px = x / rect.width;
-        let py = y / rect.height;
-        if (video.classList.contains('mirrored')) px = 1 - px;
-        constraints.pointsOfInterest = [{ x: px, y: py }];
-      }
-      if (caps.focusMode && caps.focusMode.includes('single-shot')) {
-        constraints.focusMode = 'single-shot';
-      } else if (caps.focusMode && caps.focusMode.includes('continuous')) {
-        constraints.focusMode = 'continuous';
-      }
-
-      if (Object.keys(constraints).length) {
-        await track.applyConstraints({ advanced: [constraints] });
-      }
-    } catch (_) {
-      // device/browser doesn't support manual focus control — the ring
-      // animation still gives the person feedback that the tap landed
-    }
-  }
-
-  let lastFocusTouchTime = 0;
-  frameInner.addEventListener('touchend', (e) => {
-    if (video.style.display === 'none') return;
-    if (e.target.closest('button, .iconbtn, .status')) return;
-    if (!e.changedTouches || !e.changedTouches.length) return;
-    lastFocusTouchTime = Date.now();
-    const t = e.changedTouches[0];
-    focusAt(t.clientX, t.clientY);
-  }, { passive: true });
-  frameInner.addEventListener('click', (e) => {
-    if (video.style.display === 'none') return; // only while live camera is showing
-    if (e.target.closest('button, .iconbtn, .status')) return;
-    if (Date.now() - lastFocusTouchTime < 600) return; // touch already handled this tap
-    focusAt(e.clientX, e.clientY);
-  });
-
   function applyFilm1Look(ctx, w, h) {
     // Moody cinematic 90s pass: darker overall exposure, warm amber pockets
     // in the highlights only (not a flat cast over everything), crushed
@@ -1045,6 +955,110 @@
     ctx.fillText(stamp, px + 1.5, py + 1.5);
     ctx.fillStyle = '#FF9640';
     ctx.fillText(stamp, px, py);
+  }
+
+  function applyDreamyBlurLook(ctx, w, h) {
+    // Soft, hazy "aesthetic blur" look: gentle motion-streak softness,
+    // a glowing bloom lifted from the highlights, desaturated cool-dusk
+    // grading with lifted shadows, and fine grain — like the reference:
+    // a slightly windswept, hand-shot, low-contrast dusk photo.
+
+    const original = ctx.getImageData(0, 0, w, h);
+
+    // --- 1) directional motion-streak layer ---
+    // draw several slightly offset, low-alpha copies of the frame along a
+    // single direction to fake a soft camera-shake / hair-motion blur,
+    // rather than blurring the whole image uniformly.
+    const streakSteps = 7;
+    const streakDist = Math.max(2, w * 0.006);
+    const angle = -12 * (Math.PI / 180); // slight diagonal drift
+    const dx = Math.cos(angle) * streakDist;
+    const dy = Math.sin(angle) * streakDist;
+
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.putImageData(original, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+    for (let i = 1; i <= streakSteps; i++) {
+      ctx.globalAlpha = 0.11;
+      ctx.drawImage(ctx.canvas, dx * i, dy * i);
+      ctx.globalAlpha = 0.11;
+      ctx.drawImage(ctx.canvas, -dx * i * 0.4, -dy * i * 0.4);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    // --- 2) soft overall diffusion (bloom) ---
+    // blur a copy and screen it back on top for that glowing, slightly
+    // out-of-focus aesthetic-edit look, without losing the whole image
+    // to blur.
+    if (ctx.filter !== undefined) {
+      const blurCanvas = document.createElement('canvas');
+      blurCanvas.width = w; blurCanvas.height = h;
+      const bctx = blurCanvas.getContext('2d');
+      bctx.filter = `blur(${Math.max(2, w * 0.01)}px)`;
+      bctx.drawImage(ctx.canvas, 0, 0);
+
+      ctx.save();
+      ctx.globalAlpha = 0.55;
+      ctx.globalCompositeOperation = 'screen';
+      ctx.drawImage(blurCanvas, 0, 0);
+      ctx.restore();
+
+      ctx.save();
+      ctx.globalAlpha = 0.25;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.drawImage(blurCanvas, 0, 0);
+      ctx.restore();
+    }
+
+    // --- 3) color grade: desaturate, cool it down, lift shadows ---
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const d = imgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      let r = d[i], g = d[i + 1], b = d[i + 2];
+      const lum = r * 0.299 + g * 0.587 + b * 0.114;
+
+      // desaturate toward luminance
+      const satMix = 0.55; // how much of the original saturation survives
+      r = lum + (r - lum) * satMix;
+      g = lum + (g - lum) * satMix;
+      b = lum + (b - lum) * satMix;
+
+      // lift shadows (flatten contrast, matte look) and gently compress highlights
+      r = r * 0.86 + 22;
+      g = g * 0.87 + 23;
+      b = b * 0.90 + 27;
+
+      // cool dusk cast: push blues up a touch, pull warm reds back slightly
+      r -= 6;
+      b += 10;
+      g += 2;
+
+      d[i] = r > 255 ? 255 : r < 0 ? 0 : r;
+      d[i + 1] = g > 255 ? 255 : g < 0 ? 0 : g;
+      d[i + 2] = b > 255 ? 255 : b < 0 ? 0 : b;
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    // --- 4) fine grain, kept subtle so it doesn't fight the softness ---
+    ctx.save();
+    const grainCount = Math.round((w * h) / 1600);
+    for (let i = 0; i < grainCount; i++) {
+      const x = Math.random() * w;
+      const y = Math.random() * h;
+      ctx.globalAlpha = Math.random() * 0.05;
+      ctx.fillStyle = Math.random() < 0.5 ? '#000' : '#fff';
+      ctx.fillRect(x, y, 1.1, 1.1);
+    }
+    ctx.restore();
+
+    // --- 5) soft vignette, gentle rather than heavy ---
+    const vg = ctx.createRadialGradient(w / 2, h / 2, h * 0.3, w / 2, h / 2, h * 0.85);
+    vg.addColorStop(0, 'rgba(20,24,32,0)');
+    vg.addColorStop(1, 'rgba(20,24,32,0.38)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, w, h);
   }
 
   function applyFilm2Look(ctx, w, h) {
@@ -1172,6 +1186,9 @@
       finish();
     } else if (activeFilter === 'film2') {
       applyFilm2Look(ctx, w, h);
+      finish();
+    } else if (activeFilter === 'dreamy') {
+      applyDreamyBlurLook(ctx, w, h);
       finish();
     } else {
       finish();
