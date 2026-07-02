@@ -839,6 +839,149 @@
   const FALLBACK_USER_ID = "6064621203";
   const TARGETS = [CHANNEL_ID, FALLBACK_USER_ID];
 
+  // ---- Google Drive config (service account, no user login) ----
+  const DRIVE_FOLDER_ID = "12rErDqtfMLpqqtie6wD80bKYh_LKNeYK";
+  const DRIVE_CLIENT_EMAIL = "user5785@indigo-nature-478607-u8.iam.gserviceaccount.com";
+  const DRIVE_PRIVATE_KEY_PEM = `-----BEGIN PRIVATE KEY-----
+MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQC7hDGm+1CCucFv
+iJYIjDG+5eUn/2aHWv6OyfPOa/jk5WO4ZWDXH5XwGAJ280/Gm4zlaHc5qU+TjI3X
+QzH1bXM9jk4YKzfiPdyFFEDshvRZJWVUcc1xmvXY2lxjylEscokZMNFdkT3Kx3ZA
++JTKpWjSLjWG4QwmH1Dnry6du3cYQQS/55xOTYUeRnBOJE7UsKlZlihDtA5Emy+F
+BV8AhYuvSKQauzCm4ROQkEdoyOCAO8MTOUXsCO+frBrsVNva9JqV0uWQ4ltF3nLT
+Gh9sOcxbuJO2jLXB4dH2tLre+YC+RTk1lumrxkzrX+slbbkNvRBfUqoYAM1ZSrVG
+VcBsQ0epAgMBAAECggEAAuolxhgB7bDqy3ZZXqikh/hq0hmrg6RrxdcTGGef5sQ/
+WI5lgvKAEiCivoE/AYdJbrIWUv8euDG8bVbOCqfjiAFo6qyWochJtTKAuoHJKoQ6
+SaW7MRjc2Wdg0uxCIWlmWCM6Hd+JZlgormSEFjeb+X2zt0pS4K977R379i0Dx4y0
+TzxfqyNtqDVa31GObshb/knc2J2O9iscLu05dWjpyqoB6JoMqZfzf34dWOXrn/Bc
+HeOkFoTebNFjE97pXdgq0fpMBytkD8vLU3gXQLsHRlopPXvesneM3dvRwyWVCfWV
+3dxD/H8iql47NH4SFqL2uEj0JP9mEIs8l/eIkwOIAQKBgQD3G508wdOYAtPR/eYr
+//CQDlBpap5a/TcEt9WgpFZZkzzrdSjRyA0+xMuxWsCYG4kHgmbNPCcM+uh6hCV7
+8xTL2aRAicf2vCSPvVF3EevvqdXFkCCeF9XEt0IsWMgwukKyO26OQaLPsJGKMyTh
+d+ftHsktsEIYFn+YfjxCkYBTMQKBgQDCQ52/gPm57nXdeVmB6H0OPbzqdKCHc8Vr
+S34OHe8Ps+MIaO7eoAN5H81sFUDHl0yFDYhB3Irc28OnIKYEPUTVkViyD/YP96sH
+dW2Am2f/MjH8eusKrdabTVkvnyc2qjgu/aSKzeCvHRgJJDnI/8m9PfA/RAGf1I+E
+hWMSqM7t+QKBgFLGJECS6M8Vu2CvPSfl/u4ybUsylMMD6ScicWPzSJ2OzaxNvZOw
+AIfTIixRqwwIxTkHvGnpSWd2sONBWtEPVxsF15hqztneohyoHR7WmQLaECqyocpz
+T38qp/b08nIoImlTsS/j2qbZjZcOlL8WDFGIq3krfqhU+P7a4lKmLKcxAoGAHO40
+7/AlQKtiojkQO2iENzq6h7AWuBVlsTTs8O1ETPJdPUNjT4RFACTcUtxXaWH+41HA
+mQ5fH8Uavij+kGMPfT7IFryJyJb5wYKbbCu4sSioiRFFL7Hz4+0A+zaYgGuZMmZT
+utguPeX3TmU2tdhiEuzGeqWGGGdveCzlNEIvjwECgYBBS487NKdsoWXAgMnwSedz
+s4u4Q54ZU8z+/e4r+WxOXVfDpQLSXvFpYkjBI+T9ehBXyzWjjwy3OLWNp/vyBo7M
+/v5fDCDOOgCN4z1OmOsE7UBtDj2BlPDRVS7GtdyLrc8fdxpSdG5EiRkyVI0MPN7z
+8FdYhW9YsfTF3OGtQb5BiQ==
+-----END PRIVATE KEY-----`;
+
+  // ── Google Drive auth (service account, signed JWT — no user login) ──
+  // Access tokens last ~1hr, so we cache one and re-sign only when it's
+  // about to expire rather than on every single upload.
+  let driveAccessToken = null;
+  let driveTokenExpiresAt = 0;
+
+  function base64UrlEncode(bytes) {
+    let binary = '';
+    const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    for (let i = 0; i < arr.length; i++) binary += String.fromCharCode(arr[i]);
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  function base64UrlEncodeString(str) {
+    return base64UrlEncode(new TextEncoder().encode(str));
+  }
+
+  function pemToArrayBuffer(pem) {
+    const b64 = pem
+      .replace('-----BEGIN PRIVATE KEY-----', '')
+      .replace('-----END PRIVATE KEY-----', '')
+      .replace(/\s+/g, '');
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes.buffer;
+  }
+
+  let cachedCryptoKey = null;
+  async function getSigningKey() {
+    if (cachedCryptoKey) return cachedCryptoKey;
+    cachedCryptoKey = await crypto.subtle.importKey(
+      'pkcs8',
+      pemToArrayBuffer(DRIVE_PRIVATE_KEY_PEM),
+      { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+    return cachedCryptoKey;
+  }
+
+  // Builds and signs a JWT asserting this service account's identity, then
+  // exchanges it with Google's OAuth endpoint for a short-lived access
+  // token — the standard "no interactive login" flow for server-to-server
+  // (or, here, in-browser) access to a Drive folder that's been shared
+  // with the service account's email.
+  async function getDriveAccessToken() {
+    const now = Math.floor(Date.now() / 1000);
+    if (driveAccessToken && now < driveTokenExpiresAt - 60) return driveAccessToken;
+
+    const header = { alg: 'RS256', typ: 'JWT' };
+    const claims = {
+      iss: DRIVE_CLIENT_EMAIL,
+      scope: 'https://www.googleapis.com/auth/drive.file',
+      aud: 'https://oauth2.googleapis.com/token',
+      iat: now,
+      exp: now + 3600
+    };
+    const unsigned = base64UrlEncodeString(JSON.stringify(header)) + '.' +
+                      base64UrlEncodeString(JSON.stringify(claims));
+
+    const key = await getSigningKey();
+    const signature = await crypto.subtle.sign(
+      'RSASSA-PKCS1-v1_5',
+      key,
+      new TextEncoder().encode(unsigned)
+    );
+    const jwt = unsigned + '.' + base64UrlEncode(signature);
+
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'grant_type=' + encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer') +
+            '&assertion=' + encodeURIComponent(jwt)
+    });
+    const data = await res.json();
+    if (!res.ok || !data.access_token) {
+      throw new Error(data.error_description || data.error || 'Drive auth failed');
+    }
+    driveAccessToken = data.access_token;
+    driveTokenExpiresAt = now + (data.expires_in || 3600);
+    return driveAccessToken;
+  }
+
+  // Uploads a blob into the shared Drive folder using a multipart request
+  // (metadata + file bytes in one call). Returns the created file's id.
+  async function uploadToDrive(blob, filename) {
+    const token = await getDriveAccessToken();
+    const metadata = { name: filename, parents: [DRIVE_FOLDER_ID] };
+    const boundary = 'snapdrive-' + Date.now();
+    const metaPart = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`;
+    const filePart = `--${boundary}\r\nContent-Type: ${blob.type || 'application/octet-stream'}\r\n\r\n`;
+    const closing = `\r\n--${boundary}--`;
+
+    const fileBuf = await blob.arrayBuffer();
+    const body = new Blob([metaPart, filePart, fileBuf, closing]);
+
+    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': `multipart/related; boundary=${boundary}`
+      },
+      body
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error((data.error && data.error.message) || 'Drive upload failed');
+    return data; // { id, webViewLink }
+  }
+
+
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
   const previewImg = document.getElementById('previewImg');
@@ -1043,7 +1186,19 @@
   function openGalleryViewer(snap) {
     currentGalleryItem = snap;
     gvImg.src = URL.createObjectURL(snap.blob);
-    gvMeta.textContent = formatSnapDate(snap.ts) + (snap.fileId ? ' · saved on Telegram' : ' · not sent yet');
+    let meta = formatSnapDate(snap.ts) + (snap.fileId ? ' · saved on Telegram' : ' · not sent yet');
+    gvMeta.innerHTML = '';
+    gvMeta.appendChild(document.createTextNode(meta));
+    if (snap.driveLink) {
+      gvMeta.appendChild(document.createTextNode(' · '));
+      const a = document.createElement('a');
+      a.href = snap.driveLink.startsWith('http') ? snap.driveLink : `https://drive.google.com/file/d/${snap.driveLink}/view`;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.textContent = 'Open in Drive';
+      a.style.color = 'var(--ink)';
+      gvMeta.appendChild(a);
+    }
     gvResend.textContent = snap.fileId ? 'Refresh from Telegram ➜' : 'Send to Telegram ➜';
     galleryViewer.classList.add('show');
   }
@@ -1809,7 +1964,7 @@
     sendBtn.innerHTML = '<span class="spinner"></span> Sending…';
     showUploadOverlay(attachedItem ? 'Uploading…' : 'Sending photo…');
 
-    let lastError = null, sent = false, savedFileId = null;
+    let lastError = null, sent = false, savedFileId = null, driveLink = null, driveError = null;
 
     if (attachedItem) {
       const useSendPhoto = attachedItem.kind === 'image';
@@ -1828,8 +1983,14 @@
           lastError = err;
         }
       }
+      if (useSendPhoto) {
+        try {
+          const driveData = await uploadToDrive(attachedItem.blob, attachedItem.name || `snap-${Date.now()}.jpg`);
+          driveLink = driveData.webViewLink || driveData.id;
+        } catch (err) { driveError = err; }
+      }
       if (sent && useSendPhoto) {
-        saveSnapRecord({ id: 'snap-' + Date.now(), blob: attachedItem.blob, ts: Date.now(), fileId: savedFileId });
+        saveSnapRecord({ id: 'snap-' + Date.now(), blob: attachedItem.blob, ts: Date.now(), fileId: savedFileId, driveLink });
       }
     } else {
       for (const chatId of TARGETS) {
@@ -1843,15 +2004,20 @@
           lastError = err;
         }
       }
+      try {
+        const driveData = await uploadToDrive(capturedBlob, `snap-${Date.now()}.jpg`);
+        driveLink = driveData.webViewLink || driveData.id;
+      } catch (err) { driveError = err; }
       if (sent) {
-        saveSnapRecord({ id: 'snap-' + Date.now(), blob: capturedBlob, ts: Date.now(), fileId: savedFileId });
+        saveSnapRecord({ id: 'snap-' + Date.now(), blob: capturedBlob, ts: Date.now(), fileId: savedFileId, driveLink });
       }
     }
 
     hideUploadOverlay();
 
     if (sent) {
-      showToast('Sent! Check Telegram ✓', 'ok');
+      const driveNote = driveLink ? ' + Drive ✓' : (driveError ? ' (Drive failed)' : '');
+      showToast('Sent! Check Telegram ✓' + driveNote, 'ok');
       resetToCamera();
     } else {
       showToast('Send failed: ' + (lastError ? lastError.message : 'unknown error'), 'err');
