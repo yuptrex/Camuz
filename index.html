@@ -692,9 +692,36 @@
     color: var(--paper);
     text-align:center;
   }
+
+  /* ── Intro splash: intro.mp4 wave animation, plays once over the app paper color ── */
+  .intro-splash{
+    position:fixed;
+    inset:0;
+    z-index:999;
+    background: var(--paper);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    transition: opacity .45s ease;
+  }
+  .intro-splash.hide{
+    opacity:0;
+    pointer-events:none;
+  }
+  .intro-frame-img{
+    width: min(70vw, 320px);
+    height:auto;
+    display:block;
+    filter: drop-shadow(0 6px 14px rgba(34,31,27,.18));
+  }
 </style>
 </head>
 <body>
+
+<!-- ── Intro splash: plays the 20-frame wave animation once, then reveals the app ── -->
+<div id="introSplash" class="intro-splash">
+  <video id="introVideo" class="intro-frame-img" src="intro.mp4" autoplay muted playsinline></video>
+</div>
 
 <!-- SVG filter that roughens the frame border into a hand-drawn wobble -->
 <svg width="0" height="0" style="position:absolute;">
@@ -1894,12 +1921,36 @@
     sendBtn.innerHTML = 'Send to Telegram ➜';
   });
 
-  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-    startCamera();
-  } else {
-    showStatus("This browser doesn't support in-page camera access.", false);
+  function beginApp() {
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      startCamera();
+    } else {
+      showStatus("This browser doesn't support in-page camera access.", false);
+    }
   }
+
+  // ── Intro splash: play the intro video once, then start the app ──
+  (function playIntroSplash() {
+    const splashEl = document.getElementById('introSplash');
+    const videoEl = document.getElementById('introVideo');
+
+    function finishSplash() {
+      if (!splashEl.isConnected) return; // already handled
+      splashEl.classList.add('hide');
+      setTimeout(() => {
+        splashEl.remove();
+        beginApp();
+      }, 450);
+    }
+
+    videoEl.addEventListener('ended', finishSplash);
+    videoEl.addEventListener('error', finishSplash); // fail gracefully straight into the app
+    videoEl.play().catch(finishSplash); // if autoplay is blocked, skip straight in
+
+    // Safety net: never let the splash block the app if something stalls
+    setTimeout(finishSplash, 6000);
+  })();
 })();
 </script>
 </body>
-  </html>
+</html>
