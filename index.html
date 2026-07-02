@@ -185,6 +185,7 @@
   .fc-film1{ background: linear-gradient(135deg, #E8B927, #7a5230); }
   .fc-film2{ background: linear-gradient(135deg, #E8543E, #7a5f9c); }
   .fc-dreamy{ background: linear-gradient(135deg, #cdd3dc, #5c6472); }
+  .fc-pinksky{ background: linear-gradient(135deg, #f3b3ae, #6e3a3d); }
   .pill{
     font-family:'Kalam',cursive;
     font-size:13px;
@@ -577,6 +578,9 @@
     <button class="filter-chip" data-filter="dreamy">
       <span class="fc-swatch fc-dreamy"></span>Dreamy
     </button>
+    <button class="filter-chip" data-filter="pinksky">
+      <span class="fc-swatch fc-pinksky"></span>Pink Sky
+    </button>
   </div>
 
   <div class="controls" id="captureControls">
@@ -670,7 +674,7 @@
   let currentStream = null;
   let facingMode = 'environment';
   let capturedBlob = null;
-  let activeFilter = 'none'; // 'none' | 'film1' | 'film2' | 'dreamy'
+  let activeFilter = 'none'; // 'none' | 'film1' | 'film2' | 'dreamy' | 'pinksky'
   const MAX_FILE_BYTES = 1024 * 1024 * 1024; // 1GB
 
   // Watermark stamped onto every captured photo, bottom-right corner.
@@ -960,18 +964,16 @@
   function applyDreamyBlurLook(ctx, w, h) {
     // Soft, hazy "aesthetic blur" look: gentle motion-streak softness,
     // a glowing bloom lifted from the highlights, desaturated cool-dusk
-    // grading with lifted shadows, and fine grain — like the reference:
-    // a slightly windswept, hand-shot, low-contrast dusk photo.
+    // grading with lifted shadows, and fine grain — a slightly windswept,
+    // hand-shot, low-contrast dusk photo.
 
     const original = ctx.getImageData(0, 0, w, h);
 
-    // --- 1) directional motion-streak layer ---
-    // draw several slightly offset, low-alpha copies of the frame along a
-    // single direction to fake a soft camera-shake / hair-motion blur,
-    // rather than blurring the whole image uniformly.
+    // directional motion-streak layer: several slightly offset, low-alpha
+    // copies along one direction, rather than blurring the whole image.
     const streakSteps = 7;
     const streakDist = Math.max(2, w * 0.006);
-    const angle = -12 * (Math.PI / 180); // slight diagonal drift
+    const angle = -12 * (Math.PI / 180);
     const dx = Math.cos(angle) * streakDist;
     const dy = Math.sin(angle) * streakDist;
 
@@ -988,10 +990,8 @@
     ctx.globalAlpha = 1;
     ctx.restore();
 
-    // --- 2) soft overall diffusion (bloom) ---
-    // blur a copy and screen it back on top for that glowing, slightly
-    // out-of-focus aesthetic-edit look, without losing the whole image
-    // to blur.
+    // soft overall diffusion (bloom): blur a copy and screen it back on
+    // top for a glowing, slightly out-of-focus aesthetic-edit look.
     if (ctx.filter !== undefined) {
       const blurCanvas = document.createElement('canvas');
       blurCanvas.width = w; blurCanvas.height = h;
@@ -1012,25 +1012,22 @@
       ctx.restore();
     }
 
-    // --- 3) color grade: desaturate, cool it down, lift shadows ---
+    // color grade: desaturate, cool it down, lift shadows
     const imgData = ctx.getImageData(0, 0, w, h);
     const d = imgData.data;
     for (let i = 0; i < d.length; i += 4) {
       let r = d[i], g = d[i + 1], b = d[i + 2];
       const lum = r * 0.299 + g * 0.587 + b * 0.114;
 
-      // desaturate toward luminance
-      const satMix = 0.55; // how much of the original saturation survives
+      const satMix = 0.55;
       r = lum + (r - lum) * satMix;
       g = lum + (g - lum) * satMix;
       b = lum + (b - lum) * satMix;
 
-      // lift shadows (flatten contrast, matte look) and gently compress highlights
       r = r * 0.86 + 22;
       g = g * 0.87 + 23;
       b = b * 0.90 + 27;
 
-      // cool dusk cast: push blues up a touch, pull warm reds back slightly
       r -= 6;
       b += 10;
       g += 2;
@@ -1041,7 +1038,7 @@
     }
     ctx.putImageData(imgData, 0, 0);
 
-    // --- 4) fine grain, kept subtle so it doesn't fight the softness ---
+    // fine grain, kept subtle
     ctx.save();
     const grainCount = Math.round((w * h) / 1600);
     for (let i = 0; i < grainCount; i++) {
@@ -1053,10 +1050,109 @@
     }
     ctx.restore();
 
-    // --- 5) soft vignette, gentle rather than heavy ---
+    // soft vignette
     const vg = ctx.createRadialGradient(w / 2, h / 2, h * 0.3, w / 2, h / 2, h * 0.85);
     vg.addColorStop(0, 'rgba(20,24,32,0)');
     vg.addColorStop(1, 'rgba(20,24,32,0.38)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  function applyPinkSkyLook(ctx, w, h) {
+    // Monochrome pink/salmon duotone grade with glowing highlight bokeh —
+    // shadows pull toward deep maroon, midtones sit in dusty rose, and the
+    // brightest points (sun-glints, clouds) lift toward near-white so they
+    // still read as bright rather than just "more pink". Finished with a
+    // soft sparkle-bloom pass and fine grain.
+
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const d = imgData.data;
+
+    // duotone stops, sampled to roughly match the reference:
+    // shadow ~ (63,31,31), mid ~ (152,99,99), highlight ~ (250,235,235)
+    const stops = [
+      { t: 0.0, c: [40, 18, 20] },
+      { t: 0.25, c: [110, 55, 55] },
+      { t: 0.55, c: [178, 110, 108] },
+      { t: 0.8, c: [225, 172, 168] },
+      { t: 1.0, c: [252, 238, 234] }
+    ];
+    function gradeAt(lum) {
+      const t = lum / 255;
+      for (let i = 0; i < stops.length - 1; i++) {
+        const a = stops[i], b = stops[i + 1];
+        if (t >= a.t && t <= b.t) {
+          const f = (t - a.t) / (b.t - a.t || 1);
+          return [
+            a.c[0] + (b.c[0] - a.c[0]) * f,
+            a.c[1] + (b.c[1] - a.c[1]) * f,
+            a.c[2] + (b.c[2] - a.c[2]) * f
+          ];
+        }
+      }
+      return stops[stops.length - 1].c;
+    }
+    // precompute a 256-entry LUT so we're not walking the stop list per pixel
+    const lut = new Array(256);
+    for (let i = 0; i < 256; i++) lut[i] = gradeAt(i);
+
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i + 1], b = d[i + 2];
+      const lum = Math.round(r * 0.299 + g * 0.587 + b * 0.114);
+      const c = lut[lum];
+      d[i] = c[0];
+      d[i + 1] = c[1];
+      d[i + 2] = c[2];
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    // sparkle bloom: find bright points and add a soft glow + tight hot core,
+    // similar to sun-glints on water in the reference
+    if (ctx.filter !== undefined) {
+      const glowCanvas = document.createElement('canvas');
+      glowCanvas.width = w; glowCanvas.height = h;
+      const gctx = glowCanvas.getContext('2d');
+      const src = ctx.getImageData(0, 0, w, h).data;
+      gctx.fillStyle = '#000';
+      gctx.fillRect(0, 0, w, h);
+      gctx.globalCompositeOperation = 'lighter';
+      for (let y = 0; y < h; y += 2) {
+        for (let x = 0; x < w; x += 2) {
+          const idx = (y * w + x) * 4;
+          const lum = src[idx] * 0.299 + src[idx + 1] * 0.587 + src[idx + 2] * 0.114;
+          if (lum > 225) {
+            const strength = (lum - 225) / 30;
+            gctx.fillStyle = `rgba(255,235,232,${Math.min(0.9, strength * 0.9)})`;
+            gctx.fillRect(x, y, 2, 2);
+          }
+        }
+      }
+      gctx.filter = `blur(${Math.max(3, w * 0.012)}px)`;
+      gctx.drawImage(glowCanvas, 0, 0);
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.globalAlpha = 0.75;
+      ctx.drawImage(glowCanvas, 0, 0);
+      ctx.restore();
+    }
+
+    // fine grain
+    ctx.save();
+    const grainCount = Math.round((w * h) / 1500);
+    for (let i = 0; i < grainCount; i++) {
+      const x = Math.random() * w;
+      const y = Math.random() * h;
+      ctx.globalAlpha = Math.random() * 0.05;
+      ctx.fillStyle = Math.random() < 0.5 ? '#000' : '#fff';
+      ctx.fillRect(x, y, 1.1, 1.1);
+    }
+    ctx.restore();
+
+    // gentle vignette, warm-dark rather than pure black
+    const vg = ctx.createRadialGradient(w / 2, h / 2, h * 0.32, w / 2, h / 2, h * 0.88);
+    vg.addColorStop(0, 'rgba(30,12,14,0)');
+    vg.addColorStop(1, 'rgba(30,12,14,0.35)');
     ctx.fillStyle = vg;
     ctx.fillRect(0, 0, w, h);
   }
@@ -1189,6 +1285,9 @@
       finish();
     } else if (activeFilter === 'dreamy') {
       applyDreamyBlurLook(ctx, w, h);
+      finish();
+    } else if (activeFilter === 'pinksky') {
+      applyPinkSkyLook(ctx, w, h);
       finish();
     } else {
       finish();
