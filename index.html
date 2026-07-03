@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -444,7 +444,7 @@
     display:flex;
     align-items:center;
     justify-content:center;
-    gap: 14px;
+    gap: 30px;
     padding: 6px 0 2px;
   }
   .shutter-wrap{ position:relative; width:84px; height:84px; }
@@ -541,35 +541,6 @@
   }
   .attach-btn:active{ transform: translateY(1px); }
   .attach-btn svg{ width:22px; height:22px; }
-
-  /* ── Chroma-keyed clip riding beside the attach (paperclip) button.
-       Source video is shot on a white background with black linework;
-       we key it out live on a <canvas> (removing near-white pixels) so
-       only the character shows. The wrapper's own background is set to
-       the app's paper-dim tone so the keyed edge blends seamlessly with
-       the surrounding UI instead of showing a white box. ── */
-  .attach-clip-wrap{
-    width: min(3cm, 22vw);
-    height: min(3cm, 22vw);
-    flex-shrink:0;
-    border-radius: 14px;
-    overflow:hidden;
-    background: var(--paper-dim);
-    border: 2.5px solid var(--ink);
-    position:relative;
-  }
-  .attach-clip-wrap video{
-    position:absolute;
-    inset:0;
-    width:100%; height:100%;
-    opacity:0; /* source video hidden; canvas shows the keyed result */
-    pointer-events:none;
-  }
-  .attach-clip-wrap canvas{
-    display:block;
-    width:100%; height:100%;
-    object-fit: cover;
-  }
 
   /* ── Attach popup sheet ── */
   .sheet-backdrop{
@@ -751,60 +722,11 @@
     text-align:center;
   }
 
-  /* ── Intro splash: chroma-keyed clip plays for exactly 2 seconds on
-       app launch, then fades into the camera. Rendered the same way as
-       the attach-button clip (canvas-based white-key), but full-bleed
-       and backfilled with the app's paper tone. ── */
-  .intro-splash{
-    position:fixed;
-    inset:0;
-    z-index:999;
-    background: var(--paper);
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    overflow:hidden;
-    transition: opacity .45s ease;
-  }
-  .intro-splash.hide{
-    opacity:0;
-    pointer-events:none;
-  }
-  .intro-splash video{
-    position:absolute;
-    width:1px; height:1px;
-    opacity:0; /* source video stays hidden; canvas shows the keyed result */
-    pointer-events:none;
-  }
-  .intro-splash canvas{
-    width: min(72vw, 320px);
-    height: auto;
-    display:block;
-  }
-  .intro-splash .intro-word{
-    position:absolute;
-    bottom: 14%;
-    left:0; right:0;
-    text-align:center;
-    font-family:'Kalam',cursive;
-    font-weight:700;
-    font-size: 22px;
-    letter-spacing: .5px;
-    color: var(--ink);
-    opacity:.85;
-  }
 
 
 </style>
 </head>
 <body>
-
-<!-- ── Intro splash: chroma-keyed clip plays for 2 seconds, then reveals the app ── -->
-<div id="introSplash" class="intro-splash">
-  <video id="introClip" src="chroma-keyed-video.webm" autoplay muted loop playsinline webkit-playsinline crossorigin="anonymous"></video>
-  <canvas id="introClipCanvas"></canvas>
-  <div class="intro-word">Camuz.</div>
-</div>
 
 <!-- SVG filter that roughens the frame border into a hand-drawn wobble -->
 <svg width="0" height="0" style="position:absolute;">
@@ -917,10 +839,6 @@
         <path d="M20.5 12.5 L12.4 20.6 a4.5 4.5 0 0 1-6.4-6.4 L14.1 6 a3 3 0 0 1 4.2 4.2 L10.2 18.3 a1.5 1.5 0 0 1-2.1-2.1 L15.5 8.7"/>
       </svg>
     </button>
-    <div class="attach-clip-wrap">
-      <video id="attachClip" src="chroma-keyed-video.webm" autoplay muted loop playsinline webkit-playsinline crossorigin="anonymous"></video>
-      <canvas id="attachClipCanvas"></canvas>
-    </div>
     <div class="shutter-wrap">
       <button class="shutter" id="shutterBtn" disabled title="Capture">
         <svg viewBox="0 0 24 24" fill="none" stroke="#221F1B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -2066,37 +1984,11 @@
     return { stop: () => { if (rafId) cancelAnimationFrame(rafId); } };
   }
 
-  // Attach-button clip — backfilled with the app's paper-dim tone (0xF3ECDD)
-  renderKeyedClip('attachClip', 'attachClipCanvas', 0xF3ECDD);
-
   // Upload/loading overlay clip — backfilled with --ink (0x221F1B) so it
   // matches the overlay's dark backdrop exactly. Loops continuously;
   // the overlay itself is hidden (display:none) between uploads so this
   // costs nothing while not in use.
   renderKeyedClip('loadingClip', 'loadingClipCanvas', 0x221F1B);
-
-  // ── Intro splash: same clip, full-bleed, backfilled with the app's
-  //    paper tone (0xFBF6EC), shown for exactly 2 seconds then faded
-  //    out to reveal the camera. ──
-  (function playIntroSplash() {
-    const splashEl = document.getElementById('introSplash');
-    if (!splashEl) { beginApp(); return; }
-
-    const renderer = renderKeyedClip('introClip', 'introClipCanvas', 0xFBF6EC);
-
-    function finishSplash() {
-      if (!splashEl.isConnected) return; // already handled
-      if (renderer) renderer.stop();
-      splashEl.classList.add('hide');
-      setTimeout(() => {
-        splashEl.remove();
-        beginApp();
-      }, 450);
-    }
-
-    // Exactly 2 seconds, regardless of the source clip's own length.
-    setTimeout(finishSplash, 2000);
-  })();
 
   function beginApp() {
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -2105,7 +1997,10 @@
       showStatus("This browser doesn't support in-page camera access.", false);
     }
   }
+
+  // App starts directly — no intro splash.
+  beginApp();
 })();
 </script>
 </body>
-</html>
+ </html>
